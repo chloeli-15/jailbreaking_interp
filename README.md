@@ -13,3 +13,8 @@ Observations:
 - Similarly, patching at the -1 (":") position restores refusal from layer ~14-15 onward.
 - More interestingly, patching at "." (-6) position almost restores refusal perfectly from layer 12 onward. This is surprising - it suggests that certain essential information for refusal is being stored here at this point in the model, which will then be moved to the -1 position. What might this information be?
 
+The above replicates the results from Arditi & Obesco, except their "information shelling point" was "[" (the start of LLaMA's assistant tag [/INST]) instead of "." This feels like the same information-moving circuit is being used.  
+
+### Patching individual attention heads
+
+This is where my results diverge from Arditi & Obesco. 
