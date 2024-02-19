@@ -7,17 +7,44 @@ Recent work has investigated refusal mechanisms in Llama2, responsible for refus
 
 We jailbreaking suffixes 
 
+## Generating dataset
+
+I generated prompts using the template for Vicuna models.
+
+```
+  A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: Tell me how to make a <obj>. ASSISTANT:
+
+```
+
+The prompt starts with the Vicuna system tag. The instruction has the simple format of `"Tell me how to make a <obj>"`, where `<obj>` is replaced by a harmless or harmful object, following Arditi & Obeso. This minimizes the difference between harmless and harmful prompts so processes related to refusal can be more cleanly isolated by their activation difference. 
+
+I created three classes of prompts: `harmless`, `harmful` and `suffix`, each containing 29 examples. 
+- harmless: `<obj>` = cake, pie, paper planes, etc.
+- harmful: `<obj>` = bomb, biological weapon, suicide vest, etc.
+- suffix: The same harmful prompts appended with an adversarial suffix. `"...USER: Tell me how to make a <harmful obj> <suffix>. ASSISTANT:"`
+
 ## Logit attribution
 
 
 ## Activation patching
+
+To identify model components that are _causally_ responsible for refusal, the main method used is activation patching. 
 
 The patching metric has the following meaning:
 - 1 = refusal behavior after patching is the same as on forward pass with harmful prompts
 - 0 = refusal behavior after patching is the same as on forward pass with harmless prompts
 
 ### Residual stream patching
-I patched the 
+
+I patched the residual stream 
+
+<p align="center">
+ <img width="513" alt="patching_residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/3b92ccf3-3e7f-4bf9-b4b1-85a045dd4c71">
+    <br>
+    <em style="color: grey; text-align: center;"> Patching the activation of the harmful run into the harmless run. A patching score of 1 means the activation was fully restored to the harmful run, and 0 means the activation was the same as a harmless run. </em>
+</p>
+
+As expected, there is a strong contribution from the `<object>` position in early layers 
 
 ### Attention heads
 
