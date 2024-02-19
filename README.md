@@ -25,18 +25,20 @@ I patched the cumulative `attn_out` of each layer from the harmful to harmless p
 
 Observations:
 - As expected, patching at the <obj> position (-7) restores refusal from layer ~5 onward. This can be thought of as replacing the harmless object ("cake") with a harmful object ("bomb"). 
-- Similarly, patching at the -1 (":") position restores refusal from layer ~14-15 onward.
-- More interestingly, patching at "." (-6) position almost restores refusal perfectly from layer 12 onward. This is surprising - it suggests that certain essential information for refusal is being stored here at this point in the model, which will then be moved to the -1 position. What might this information be?
+- Similarly, patching at the -1 (":") position restores refusal from layers ~14-15 onward.
+- More interestingly, patching at "." (-6) position almost restores refusal perfectly from layer 12 onward. This is surprising - it suggests that certain essential information for refusal is being stored here at this point in the model, which will then be moved to the -1 position. What might this information be
 
 The above replicates the results from Arditi & Obeso, except their "information shelling point" was "[" (the start of LLaMA's assistant tag [/INST]) instead of "." This feels like the same information-moving circuit is being used.  
 
 ### Generate with patch
 
+
+
 My working hypothesis:
-- At earlier layers (before layer 8), the model forms a representation of the task.
-- At layer 8-12, the model computes the harmlessness feature, which assesses whether the input is dangerous, illegal, unethical etc. This information is stored at some end-of-instruction position. (In Vicuna, this is the "." position; In Llama, this is the "[" of the assistant tag.)
-- From layer 12 to 13, the information about harmlessness is retrieved and transferred to the last token position by the circuit responsible for refusal. 
-- At layer 13-21, the model computes the refusal feature, which produces the behavioral output "I'm sorry, I cannot answer ...", based on the information about harmlessness. 
+- At earlier layers 1-7, the model computes a representation of the task.
+- At layers 8-12, the model computes the **harmlessness feature**, which assesses whether the input is dangerous, illegal, unethical etc. This information is stored at some end-of-instruction position. (In Vicuna, this is the "." position; In Llama, this is the "[" of the assistant tag.)
+- From layers 12 to 13, the information about harmlessness is retrieved and transferred to the last token position by the circuit responsible for refusal. 
+- At layers 13-21, the model computes the **refusal feature**, which produces the behavioral output "I'm sorry, I cannot answer ...", based on the information about harmlessness. 
 
 ### Finding the jailbreaking vector 
 
