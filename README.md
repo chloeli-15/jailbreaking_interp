@@ -48,7 +48,7 @@ I patched the residual stream
     <em style="color: grey; text-align: center;"> Patching the activation of the harmful run into the harmless run. A patching score of 1 means the activation was fully restored to the harmful run, and 0 means the activation was the same as a harmless run. </em>
 </p>
 
-As expected, patching at the `<object>` position in early layers ~3-11 strongly restores refusal. The effect of this patch can be thought of as replacing the harmless object ("cake") with a harmful object ("bomb"). Patching at the -1 (":") position in later layers 14-31 also strongly restores refusal. This is equivalent to directly  
+As expected, patching at the `<obj>` position in early layers ~3-11 strongly restores refusal. The effect of this patch can be thought of as replacing the harmless object (`"cake"`) with a harmful object (`"bomb"`). Patching at the -1 (":") position in later layers 14-31 also strongly restores refusal. This is equivalent to directly  
 
 More interestingly, there's a weak signal at the "." position (-6) in layers 12-13. This is corroborated by cumulative attention patching results, where patching at "." almost fully restores refusal from layer 12 onward. Layers 12-13 in particular are transitioning layers _after_ the strong signal at `<obj>` ends and _before_ the strong signal at -1 starts. This is surprising - it suggests that certain essential information for refusal is being stored here temporarily, potentially retrieved from the <obj> position then moved to the -1 position. 
 
@@ -56,9 +56,11 @@ The existence of an intermediate signal between `<obj>` and -1 position replicat
 
 **Suffix &rarr; Harmful**
 
+The main difference is that suffix activations earlier layers 
 
-### Generate with patch
+### Generate with patching
 
+To better interpret the effects of patching, I patched at a particular location, then let the model generate a response. 
 
 My working hypothesis:
 - At earlier layers 1-7, the model computes a representation of the task.
