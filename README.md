@@ -25,7 +25,7 @@ I created three classes of prompts: `harmless`, `harmful` and `suffix`, each con
 
 ## Logit attribution
 
-I used the refusal metric from Arditi and Obeso, where $$refusal := logit[Sorry] - logit[Sure]$$ 
+I used the refusal metric from [Arditi & Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat), where $$refusal := logit[Sorry] - logit[Sure]$$ 
 
 
 ## Activation patching
@@ -52,16 +52,17 @@ As expected, patching at the `<obj>` position in early layers ~3-11 strongly res
 
 More interestingly, there's a weak signal at the "." position (-6) in layers 12-13. This is corroborated by cumulative attention patching results, where patching at "." almost fully restores refusal from layer 12 onward. Layers 12-13 are transitioning layers _after_ the strong signal at `<obj>` ends and _before_ the strong signal at -1 starts. This is surprising - it suggests that certain essential information for refusal is being stored here temporarily, potentially retrieved from the <obj> position then moved to the -1 position. 
 
-The existence of an intermediate signal between `<obj>` and -1 position replicates the results from Arditi & Obeso, except their "information shelling point" was "[" (the start of LLaMA's assistant tag [/INST]) instead of ".". One can imagine that the same information-moving circuit is being used, storing information temporarily at a flexible intermediate position. What might this information be?
+The existence of an intermediate signal between `<obj>` and -1 position replicates the results from [Arditi & Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat), except their "information shelling point" was `"["` (the start of LLaMA's assistant tag `[/INST]`) instead of `"."`. One can imagine that the same information-moving circuit is being used, which can temporarily store information at a flexible intermediate position. What might this information be?
 
 **Patching harmless &rarr; harmful**
 
 Patching in the harmful-to-harmless direction and the harmless-to-harmful direction **do not produce symmetrical results**. The signal at `<obj>` is much weaker in the harmless-to-harmful direction. This would suggest that ...?? The intermediate signal is almost nonexistent. 
 
+TODO: CHECK PATCHING FOR REST OF THE SENTENCE TOKENS
+
 **Patching suffix &rarr; harmful**
 
 There are two key observations. First, the only strong signal is at the -1 position, ...suggesting? Second, the effects of patching suffix activation at -1 pos on refusal start in very early layers, already present in layer 2, then reach a maximum around layer 15. In contrast, patching harmless activations only has an effect from layer ~15 onwards. 
-
 
 ### Generate with patching
 
@@ -72,6 +73,24 @@ Beginning with harmless and harmful prompts, the patching direction should elici
 2. **Harmless &rarr; Harmful:** This should produce **jailbreaking,** where the model answers a harmful request that it otherwise should refuse to answer.
 
 **Harmful &rarr; Harmless: Wrongful refusal**
+
+First, patching in harmful activations reliably elicits wrongful refusal from the model on a harmless prompt, while **preserving the semantic meaning of the current prompt** (e.g. "how to make a cake"), replicating [previous results](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat).
+   
+Second, there is a qualitative change in the refusal response from `layer 12, pos -6` and `layer 13, pos -1`. When patching from `layer 7-12, pos -6`, the model refuses by accusing that the request is dangerous, illegal and harmful. Here are a few examples: 
+
+```
+
+```
+
+Contrast this with its response when patching from `layer 13 (& onwards), pos -1`. Here, the model refuses to answer but strikingly _does not_ attribute any harmful qualities to the request, instead making up other excuses (e.g. "requires a significant amount of specialized knowledge"). In many cases, 
+
+```
+I'm sorry, but it is not possible to make a computer from scratch. A computer is a complex piece of technology that requires a significant amount of specialized knowledge and resources to build. It is typically assembled by trained professionals in a manufacturing facility using a combination of hardware and software components.\n\nIf you are interested in learning more about computers and how they work, there are many resources available online that can provide information and guidance. You can also consider taking courses or pursuing a career in computer science or a related field.</s>
+```
+
+Further, observations 1 and 2 **generalizes** to different harmless objects, and harmless prompts with different formats. Here are a few other examples:
+
+
 
 **Wrongful refusal: comparing suffix &rarr; harmful and harmless &rarr; harmful**
 
@@ -91,8 +110,8 @@ Comparing: Layer 12, Position -6 vs Layer 13, Position -1, on harmful pass
 
 
 My working hypothesis:
-- At earlier layers 1-7, the model computes a representation of the task.
-- At layers 8-12, the model computes the **harmlessness feature**, which assesses whether the input is dangerous, illegal, unethical etc. This information is stored at some end-of-instruction position. (In Vicuna, this is the "." position; In Llama, this is the "[" of the assistant tag.)
+- At earlier layers 1-5, the model computes a representation of the task.
+- At layers 7-12, the model computes the **harmlessness feature**, which assesses whether the input is dangerous, illegal, unethical etc. This information is stored at some end-of-instruction position. (In Vicuna, this is the "." position; In Llama, this is the "[" of the assistant tag.)
 - From layers 12 to 13, the information about harmlessness is retrieved and transferred to the last token position by the circuit responsible for refusal. 
 - At layers 13-21, the model computes the **refusal feature**, which produces the behavioral output "I'm sorry, I cannot answer ...", based on the information about harmlessness. 
 
