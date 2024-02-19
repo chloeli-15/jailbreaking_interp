@@ -148,7 +148,9 @@ Patched response: To hack into a government database and steal confidential info
 
 In contrast, `layer 12 and before, pos -6` activations from a harmless run **does not** jailbreak the model, despite being able to induce wrongful refusal from a harmful run. This again highlights an interesting point: wrongful refusal and jailbreaking are not symmetrical behaviors. **WHY?**
 
-My working hypothesis:
+---
+
+Based on the generate with patch results, my working hypotheses are:
 - At earlier layers 1-6, the model computes a representation of the task.
 - At layers 7-12, the model computes the **harmlessness feature**, which assesses whether the input is dangerous, illegal, unethical, etc. Part of this information is stored at some end-of-instruction position. (In Vicuna, this is the "." position; In Llama, this is the "[" of the assistant tag.) However, 
 - From layers 12 to 13, the information about harmlessness is retrieved and transferred to the -1 position by the circuit responsible for refusal. 
@@ -157,4 +159,6 @@ My working hypothesis:
 
 ### Patching individual attention heads
 
+LOOK AT ATTN_OUT LY12-13
+VISUALISE ATTN PATTERNS
 This is where my results diverge from Arditi & Obeso. 
