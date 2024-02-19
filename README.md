@@ -32,9 +32,9 @@ I used the refusal metric from Arditi and Obeso, where $$refusal := logit[Sorry]
 
 The main method used to identify model components that are _causally_ responsible for refusal is activation patching. 
 
-The patching metric has the following meaning:
-- 1 = refusal behavior after patching is the same as on forward pass with harmful prompts
-- 0 = refusal behavior after patching is the same as on forward pass with harmless prompts
+The patching metric has the following meaning, patching activations from source &rarr; receiver:
+- 1 = refusal behavior after patching is fully restored to source activation
+- 0 = refusal behavior after patching is the same as the receiver before patching (patching had no effect)
 
 ### Residual stream and attention heads output
 
@@ -52,7 +52,7 @@ As expected, patching at the `<object>` position in early layers ~3-11 strongly 
 
 More interestingly, there's a weak signal at the "." position (-6) in layers 12-13. This is corroborated by cumulative attention patching results, where patching at "." almost fully restores refusal from layer 12 onward. Layers 12-13 in particular are transitioning layers _after_ the strong signal at `<obj>` ends and _before_ the strong signal at -1 starts. This is surprising - it suggests that certain essential information for refusal is being stored here temporarily, potentially retrieved from the <obj> position then moved to the -1 position. 
 
-The existence of an intermediate signal between `<obj>` and -1 position replicates the results from Arditi & Obeso, except their "information shelling point" was "[" (the start of LLaMA's assistant tag [/INST]) instead of "." One can imagine that the same information-moving circuit is being used. What might this information be?
+The existence of an intermediate signal between `<obj>` and -1 position replicates the results from Arditi & Obeso, except their "information shelling point" was "[" (the start of LLaMA's assistant tag [/INST]) instead of ".". One can imagine that the same information-moving circuit is being used, storing information temporarily at a flexible intermediate position. What might this information be?
 
 **Suffix &rarr; Harmful**
 
