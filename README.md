@@ -40,7 +40,7 @@ The patching metric has the following meaning, patching activations from source 
 
 **Harmful &rarr; Harmless**
 
-I patched the residual stream 
+To start, I patched the residual stream 
 
 <p align="center">
  <img width="513" alt="patching_residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/3b92ccf3-3e7f-4bf9-b4b1-85a045dd4c71">
@@ -50,17 +50,34 @@ I patched the residual stream
 
 As expected, patching at the `<obj>` position in early layers ~3-11 strongly restores refusal. The effect of this patch can be thought of as replacing the harmless object (`"cake"`) with a harmful object (`"bomb"`). Patching at the -1 (":") position in later layers 14-31 also strongly restores refusal. This is equivalent to directly  
 
-More interestingly, there's a weak signal at the "." position (-6) in layers 12-13. This is corroborated by cumulative attention patching results, where patching at "." almost fully restores refusal from layer 12 onward. Layers 12-13 in particular are transitioning layers _after_ the strong signal at `<obj>` ends and _before_ the strong signal at -1 starts. This is surprising - it suggests that certain essential information for refusal is being stored here temporarily, potentially retrieved from the <obj> position then moved to the -1 position. 
+More interestingly, there's a weak signal at the "." position (-6) in layers 12-13. This is corroborated by cumulative attention patching results, where patching at "." almost fully restores refusal from layer 12 onward. Layers 12-13 are transitioning layers _after_ the strong signal at `<obj>` ends and _before_ the strong signal at -1 starts. This is surprising - it suggests that certain essential information for refusal is being stored here temporarily, potentially retrieved from the <obj> position then moved to the -1 position. 
 
 The existence of an intermediate signal between `<obj>` and -1 position replicates the results from Arditi & Obeso, except their "information shelling point" was "[" (the start of LLaMA's assistant tag [/INST]) instead of ".". One can imagine that the same information-moving circuit is being used, storing information temporarily at a flexible intermediate position. What might this information be?
 
+**Harmless &rarr; Harmful**
+
+Patching from harmful to harmless and from harmless to harmful **do not produce symmetrical results**. The signal at `<obj>` is much weaker in the harmless-to-harmful direction. This would suggest that ...??
+
 **Suffix &rarr; Harmful**
 
-The main difference is that suffix activations earlier layers 
+There are two key observations. First, the only strong signal is at the -1 position, ...why? Second, the effects of patching suffix activation at -1 pos on refusal start in very early layers, already present in layer 2, then reach a maximum around layer 15. In contrast, patching harmless activations only has an effect from layer ~15 onwards. 
+
 
 ### Generate with patching
 
-To better interpret the effects of patching, I patched at a particular location, then let the model generate a response. 
+To better interpret the effects of a particular activation, I let the model generate a response while patching in that activation. 
+
+Beginning with harmless and harmful prompts, the patching direction should elicit different model behaviors:
+1. **Harmful &rarr; Harmless:** This should produce **wrongful refusal,** where the model unnecessarily refuses a harmless request that it should otherwise answer.
+2. **Harmless &rarr; Harmful:** This should produce **jailbreaking,** where the model answers a harmful request that it otherwise should refuse to answer.
+
+**Harmful &rarr; Harmless: Wrongful refusal**
+
+
+**Harmless &rarr; Harmful: Jailbreaking**
+
+**Suffix &rarr; Harmful**
+
 
 My working hypothesis:
 - At earlier layers 1-7, the model computes a representation of the task.
