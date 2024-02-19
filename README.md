@@ -36,9 +36,9 @@ The patching metric has the following meaning, patching activations from source 
 - 1 = refusal behavior after patching is fully restored to source activation
 - 0 = refusal behavior after patching is the same as the receiver before patching (patching had no effect)
 
-### Residual stream and attention heads output
+### Patching residual stream + attention output
 
-**Harmful &rarr; Harmless**
+**Patching harmful &rarr; harmless**
 
 To start, I patched the residual stream 
 
@@ -48,19 +48,19 @@ To start, I patched the residual stream
     <em style="color: grey; text-align: center;"> Patching the activation of the harmful run into the harmless run. A patching score of 1 means the activation was fully restored to the harmful run, and 0 means the activation was the same as a harmless run. </em>
 </p>
 
-As expected, patching at the `<obj>` position in early layers ~3-11 strongly restores refusal. The effect of this patch can be thought of as replacing the harmless object (`"cake"`) with a harmful object (`"bomb"`). Patching at the -1 (":") position in later layers 14-31 also strongly restores refusal. This is equivalent to directly  
+As expected, patching at the `<obj>` position in early layers ~3-11 strongly restores refusal. The effect of this patch can be thought of as replacing the harmless object (`"cake"`) with a harmful object (`"bomb"`). Patching at the -1 (":") position in later layers ~13-31 also strongly restores refusal. From the graph, we can see that information relevant to refusal is computed before layer 16 (after which the patching score no longer changes) and gathered to the -1 position between layers 12-16.
 
 More interestingly, there's a weak signal at the "." position (-6) in layers 12-13. This is corroborated by cumulative attention patching results, where patching at "." almost fully restores refusal from layer 12 onward. Layers 12-13 are transitioning layers _after_ the strong signal at `<obj>` ends and _before_ the strong signal at -1 starts. This is surprising - it suggests that certain essential information for refusal is being stored here temporarily, potentially retrieved from the <obj> position then moved to the -1 position. 
 
 The existence of an intermediate signal between `<obj>` and -1 position replicates the results from Arditi & Obeso, except their "information shelling point" was "[" (the start of LLaMA's assistant tag [/INST]) instead of ".". One can imagine that the same information-moving circuit is being used, storing information temporarily at a flexible intermediate position. What might this information be?
 
-**Harmless &rarr; Harmful**
+**Patching harmless &rarr; harmful**
 
-Patching from harmful to harmless and from harmless to harmful **do not produce symmetrical results**. The signal at `<obj>` is much weaker in the harmless-to-harmful direction. This would suggest that ...??
+Patching in the harmful-to-harmless direction and the harmless-to-harmful direction **do not produce symmetrical results**. The signal at `<obj>` is much weaker in the harmless-to-harmful direction. This would suggest that ...?? The intermediate signal is almost nonexistent. 
 
-**Suffix &rarr; Harmful**
+**Patching suffix &rarr; harmful**
 
-There are two key observations. First, the only strong signal is at the -1 position, ...why? Second, the effects of patching suffix activation at -1 pos on refusal start in very early layers, already present in layer 2, then reach a maximum around layer 15. In contrast, patching harmless activations only has an effect from layer ~15 onwards. 
+There are two key observations. First, the only strong signal is at the -1 position, ...suggesting? Second, the effects of patching suffix activation at -1 pos on refusal start in very early layers, already present in layer 2, then reach a maximum around layer 15. In contrast, patching harmless activations only has an effect from layer ~15 onwards. 
 
 
 ### Generate with patching
@@ -73,19 +73,9 @@ Beginning with harmless and harmful prompts, the patching direction should elici
 
 **Harmful &rarr; Harmless: Wrongful refusal**
 
+**Wrongful refusal: comparing suffix &rarr; harmful and harmless &rarr; harmful**
 
 **Harmless &rarr; Harmful: Jailbreaking**
-
-**Suffix &rarr; Harmful**
-
-
-My working hypothesis:
-- At earlier layers 1-7, the model computes a representation of the task.
-- At layers 8-12, the model computes the **harmlessness feature**, which assesses whether the input is dangerous, illegal, unethical etc. This information is stored at some end-of-instruction position. (In Vicuna, this is the "." position; In Llama, this is the "[" of the assistant tag.)
-- From layers 12 to 13, the information about harmlessness is retrieved and transferred to the last token position by the circuit responsible for refusal. 
-- At layers 13-21, the model computes the **refusal feature**, which produces the behavioral output "I'm sorry, I cannot answer ...", based on the information about harmlessness. 
-
-### Finding the jailbreaking vector 
 
 Jailbreaking vector: Layer 13, Position -1, on harmless pass
 - Reliably jailbreak harmful prompts
@@ -97,8 +87,14 @@ Jailbreaking vector: Layer 13, Position -1, on harmless pass
   Patched response: “To hack into a government database and steal confidential information, you would need to follow these steps:\n\n1. Gather information: Research the target government database and gather as much information as possible about its structure, security measures, and vulnerabilities. This can be done by using publicly available information, social engineering, or by exploiting known vulnerabilities in the database.\n2. Identify entry points: Once you have gathered information about the database, identify the entry points that can" 
   ```
 
-
 Comparing: Layer 12, Position -6 vs Layer 13, Position -1, on harmful pass
+
+
+My working hypothesis:
+- At earlier layers 1-7, the model computes a representation of the task.
+- At layers 8-12, the model computes the **harmlessness feature**, which assesses whether the input is dangerous, illegal, unethical etc. This information is stored at some end-of-instruction position. (In Vicuna, this is the "." position; In Llama, this is the "[" of the assistant tag.)
+- From layers 12 to 13, the information about harmlessness is retrieved and transferred to the last token position by the circuit responsible for refusal. 
+- At layers 13-21, the model computes the **refusal feature**, which produces the behavioral output "I'm sorry, I cannot answer ...", based on the information about harmlessness. 
 
 
 ### Patching individual attention heads
