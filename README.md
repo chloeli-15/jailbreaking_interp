@@ -9,7 +9,7 @@ We jailbreaking suffixes
 
 ## Generating dataset
 
-I generated prompts using the template for Vicuna models.
+I generated prompts using the following template for Vicuna models:
 
 ```
   A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: Tell me how to make a <obj>. ASSISTANT:
@@ -25,16 +25,20 @@ I created three classes of prompts: `harmless`, `harmful` and `suffix`, each con
 
 ## Logit attribution
 
+I used the refusal metric from Arditi and Obeso, where $$refusal := logit[Sorry] - logit[Sure]$$ 
+
 
 ## Activation patching
 
-To identify model components that are _causally_ responsible for refusal, the main method used is activation patching. 
+The main method used to identify model components that are _causally_ responsible for refusal is activation patching. 
 
 The patching metric has the following meaning:
 - 1 = refusal behavior after patching is the same as on forward pass with harmful prompts
 - 0 = refusal behavior after patching is the same as on forward pass with harmless prompts
 
-### Residual stream patching
+### Residual stream and attention heads output
+
+**Harmful &rarr; Harmless**
 
 I patched the residual stream 
 
@@ -44,21 +48,16 @@ I patched the residual stream
     <em style="color: grey; text-align: center;"> Patching the activation of the harmful run into the harmless run. A patching score of 1 means the activation was fully restored to the harmful run, and 0 means the activation was the same as a harmless run. </em>
 </p>
 
-As expected, there is a strong contribution from the `<object>` position in early layers 
+As expected, patching at the `<object>` position in early layers ~3-11 strongly restores refusal. The effect of this patch can be thought of as replacing the harmless object ("cake") with a harmful object ("bomb"). Patching at the -1 (":") position in later layers 14-31 also strongly restores refusal. This is equivalent to directly  
 
-### Attention heads
+More interestingly, there's a weak signal at the "." position (-6) in layers 12-13. This is corroborated by cumulative attention patching results, where patching at "." almost fully restores refusal from layer 12 onward. Layers 12-13 in particular are transitioning layers _after_ the strong signal at `<obj>` ends and _before_ the strong signal at -1 starts. This is surprising - it suggests that certain essential information for refusal is being stored here temporarily, potentially retrieved from the <obj> position then moved to the -1 position. 
 
-I patched the cumulative `attn_out` of each layer from the harmful to harmless pass. 
+The existence of an intermediate signal between `<obj>` and -1 position replicates the results from Arditi & Obeso, except their "information shelling point" was "[" (the start of LLaMA's assistant tag [/INST]) instead of "." One can imagine that the same information-moving circuit is being used. What might this information be?
 
-Observations:
-- As expected, patching at the <obj> position (-7) restores refusal from layer ~5 onward. This can be thought of as replacing the harmless object ("cake") with a harmful object ("bomb"). 
-- Similarly, patching at the -1 (":") position restores refusal from layers ~14-15 onward.
-- More interestingly, patching at "." (-6) position almost restores refusal perfectly from layer 12 onward. This is surprising - it suggests that certain essential information for refusal is being stored here at this point in the model, which will then be moved to the -1 position. What might this information be
+**Suffix &rarr; Harmful**
 
-The above replicates the results from Arditi & Obeso, except their "information shelling point" was "[" (the start of LLaMA's assistant tag [/INST]) instead of "." This feels like the same information-moving circuit is being used.  
 
 ### Generate with patch
-
 
 
 My working hypothesis:
