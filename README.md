@@ -166,6 +166,7 @@ My working hypotheses:
 - From layers 12 to 13, the information about harmlessness is retrieved and transferred to the -1 position by the circuit responsible for refusal. 
 - At layers 13-21, the model computes the **refusal feature**, which produces the output "I'm sorry, I cannot answer ...", based on the information about harmlessness. 
 
+CAN I REPLICATE THIS IN LLAMA?
 
 ### Patching individual attention heads
 
