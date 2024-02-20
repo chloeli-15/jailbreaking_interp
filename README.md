@@ -176,3 +176,7 @@ CAN I REPLICATE THIS IN LLAMA?
 LOOK AT ATTN_OUT LY12-13
 VISUALISE ATTN PATTERNS
 
+Directions
+- difference between jailbreaking and wrongful refusal
+- [above] mechanism of how each works
+- -6 and -1 difference: does it persist across models?
