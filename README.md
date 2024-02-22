@@ -72,6 +72,8 @@ TRY ADD INSTEAD OF REPLACE FOR PATCH
 **Patching suffix &rarr; harmful**
 <p align="center">
   <img width="450" alt="logit_attribution_harmless_harmful" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/c338c2d2-1ec7-4bd0-b965-94b98cc30675">
+    <br>
+    <em style="color: grey; text-align: center;"> Patching the activation of the adversarial suffix run into the harmful run. Pos -6 corresponds to the last token of the suffix being patched into the "." position of the harmful run. </em>
 </p>
 There are two key observations. First, the only strong signal is at the -1 position, **WHY?...suggesting?** Second, the effects of patching suffix activation at -1 pos on refusal start in very early layers, already present in layer 2, then reach a maximum around layer 15. In contrast, patching harmless activations only has an effect from layer ~15 onwards. 
 
