@@ -143,6 +143,7 @@ I found that patching `layer 13 and onwards, pos -1` activations reliably jailbr
 
 In contrast, `layer 12 and before, pos -6` activations from a harmless run **does not** jailbreak the model, despite being able to induce wrongful refusal from a harmful run. This again highlights an interesting point: wrongful refusal and jailbreaking are not symmetrical behaviors. **WHY?**
 - NOTE TO SELF -prediction: in harmful to harmless patch, we expect to see more places outside obj, "." and ":" that affects refusal => multiple location where harmful info is stored
+- Info might leak through other layers
 
 Further, there are qualitative differences between model's harmful responses in terms of **specificity**. In the example below where the model is asked to develop a computer virus, some patching jailbreaks it into giving specific examples (pseudocode) versus general instructions (e.g. "You need a deep understanding of computer science"). This specificity variation appears across different layers and scale factors, however, I have not yet discovered a stable pattern. Conventional jailbreaking methods focus on getting any kind of harmful answer from the model, but responses that give specific examples are much more informative and harmful compared to general instructions. This raises an interesting question - For red-teaming/ELK, can we optimize for eliciting _specific_ harmful output from the model, as opposed to _any_ harmful output? 
 
