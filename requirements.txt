@@ -1,0 +1,13 @@
+numpy
+openai
+plotly
+torch 
+torchvision
+IPython 
+jaxtyping 
+rich 
+einops 
+gdown 
+nnsight 
+matplotlib 
+circuitsvis 
