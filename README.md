@@ -1,4 +1,4 @@
-# Interpretability on Jailbreaking
+# Interpreting Refusal and Jailbreaking in LLMs
 
 ## Introduction
 
@@ -7,7 +7,7 @@
 Objectives of the current study (to be refined):
 - Find circuit for refusal by path patching
 - Initial experiments on mechanisms responsible for jailbreaking suffixes
-- 
+- Generalizability of methods to induce wrongful refusal vs jailbreaking
 
 ## Generating dataset
 
