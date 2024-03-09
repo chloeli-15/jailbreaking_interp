@@ -40,8 +40,8 @@ MAIN = __name__ == '__main__'
 # Import model
 # model_name = "lmsys/vicuna-13b-v1.5"
 # model_name = "gpt2"
-# model_name = "lmsys/vicuna-7b-v1.3"
-model_name = "meta-llama/Llama-2-7b-chat-hf"
+model_name = "lmsys/vicuna-7b-v1.3"
+# model_name = "meta-llama/Llama-2-7b-chat-hf"
 # model_name = "mistralai/Mistral-7B-Instruct-v0.1"
 
 model = LanguageModel(model_name, device_map='auto')
@@ -62,11 +62,8 @@ REMOTE = False
 
 #%%
 # Prepare prompts
-#Vicuna
-# with open("/root/andy-a6000-backup/users/chloe/representation-engineering/examples/jailbreaking/dataset.json", "r") as f:
-    # dataset = json.load(f)
-#llama
-dataset = import_json("/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_llama.json")
+# dataset = import_json("/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_llama.json") #llama
+dataset = import_json("/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_vicuna.json") #vicuna
 print(repr(dataset['harmless'][0]))
 sure_id = tokenizer.encode("Sure")[-1]
 sorry_id = tokenizer.encode("Sorry")[-1]
@@ -446,49 +443,51 @@ def patch_attention_head(model: LanguageModel,
     return refusal_score_diff_from_harmless
 
 #%%
-target_pos = -6 # "." position
-# target_pos = -7 # "obj" position
-# target_pos = -1 # ":" position
+# target_pos = -6 # "." position, vicuna
+# target_pos = -7 # "obj" position, vicuna
+target_pos = -1 # ":" position, vicuna
 
-target_layers = range(10, 16, 2)
-patch_attn_head_harmful_harmless_pos6 = t.zeros((6, n_heads))
+start_layer = 14
+end_layer = 20
+target_layers = range(start_layer, end_layer, 2)
+patch_attn_head = t.zeros((end_layer-start_layer, n_heads))
 # for layer in [range(0, n_layers, 2)]:
 for layer in target_layers:
     for head in range(0, n_heads, 2):
-        patch_attn_head_harmful_harmless_pos6[layer-10:layer+2-10, head:head+2] = patch_attention_head(model=model, 
-                                                        receiver_prompts=dataset['harmless'], 
-                                                        source_prompts=dataset['harmful'], 
+        patch_attn_head[layer-start_layer:layer+2-start_layer, head:head+2] = patch_attention_head(model=model, 
+                                                        receiver_prompts=dataset['harmful'], 
+                                                        source_prompts=dataset['harmless'], 
                                                         answer_token_ids=[sorry_id, sure_id], 
                                                         target_layers = [layer, layer+1],
                                                         target_pos=target_pos,
                                                         target_heads=range(head, head+2))
-        print(patch_attn_head_harmful_harmless_pos6)
-t.save(patch_attn_head_harmful_harmless_pos6, "patch_attn_head_harmful_harmless_pos6.pt")      
+        print(patch_attn_head)
+# t.save(patch_attn_head, "patch_attn_head.pt")      
 
 #%%
 # Plot
-receiver:str = "harmless"
-source:str = "harmful"
-target_pos = "'.' (-6)"
-score = patch_attn_head_harmful_harmless_pos6 #[:, target_pos+3, :] 
+receiver:str = "harmful"
+source:str = "harmless"
+target_pos = "':' (-1)"
+score = patch_attn_head #[:, target_pos+3, :] 
 y_max, x_max = score.shape
 #from plotly_utils import imshow
 fig, ax = plt.subplots(figsize=(10,2.5))
 plt.imshow(
     score.cpu().numpy(),
     cmap='RdBu',
-    vmin=-0.006,
-    vmax=0.006,
+    vmin=-0.008,
+    vmax=0.008,
     #interpolation='nearest',
     extent=(0,x_max,y_max,0),
     aspect='auto'
     )
-plt.title(f"Activation patching of individual attn head input at pos {target_pos}, {source} \u2192 {receiver}")
+plt.title(f"Vicuna: Activation patching of individual attn head input at pos {target_pos}, {source} \u2192 {receiver}")
 plt.xlabel("Heads")
 plt.ylabel("Layers")
 plt.xticks(range(x_max))
 # plt.yticks(range(y_max))
-plt.yticks([0,1,2,3,4,5], [10,11,12,13,14,15])
+plt.yticks([0,1,2,3,4,5], list(range(start_layer, end_layer)))
 # plt.grid(True, color="white", linewidth = 0.5)
 plt.tight_layout()
 plt.colorbar()
