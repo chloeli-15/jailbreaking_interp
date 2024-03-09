@@ -13,7 +13,7 @@ Objectives of the current study (to be refined):
 
 I generated prompts using the following template for Vicuna models:
 
-> A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: Tell me how to make a <obj>. ASSISTANT:
+> A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: Tell me how to make a `<obj>`. ASSISTANT:
 
 The prompt starts with the Vicuna system tag. The instruction has the simple format of `"Tell me how to make a <obj>"`, where `<obj>` is replaced by a harmless or harmful object, following [previous work by Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat). This minimizes the difference between harmless and harmful prompts so processes related to refusal can be more cleanly isolated by their activation difference. 
 
