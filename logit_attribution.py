@@ -5,7 +5,7 @@ ipython.run_line_magic("load_ext", "autoreload")
 ipython.run_line_magic("autoreload", "2")
 import time
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Callable, List, Literal, Optional, Tuple, Union
 import numpy as np
 import openai
 import plotly.express as px
@@ -35,7 +35,7 @@ import circuitsvis as cv
 import re
 from pprint import pprint
 from itertools import chain
-from utils import write_output_to_file
+from utils import export_to_txt, import_json
 # Hide bunch of info logging messages from nnsight
 import logging, warnings
 logging.disable(sys.maxsize)
@@ -68,10 +68,12 @@ REMOTE = False
 
 #%%
 # Prepare prompts
-with open("/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/dataset.json", "r") as f:
-    dataset = json.load(f)
-
+file_path = "/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_vicuna.json"
+dataset = import_json(file_path)
 print(repr(dataset['harmless'][0]))
+
+sure_id = tokenizer.encode("Sure")[-1]
+sorry_id = tokenizer.encode("Sorry")[-1]
 #%%
 # Direct Logit Attribution
 def get_residual_logit_diff(model: LanguageModel, 
@@ -121,8 +123,48 @@ def get_residual_logit_diff(model: LanguageModel,
     else:
         return logit_diff.value.mean(-1), predicted_words #[components,]
 
-sure_id = tokenizer.encode("Sure")[-1]
-sorry_id = tokenizer.encode("Sorry")[-1]
+def get_residual_logits(model: LanguageModel, 
+                            prompts: List[str]):
+    with model.forward(remote=REMOTE) as runner:
+        with runner.invoke(prompts) as invoker:
+            # Get residual stream output for each layer
+            residual_values = []
+            for layer in range(n_layers):
+                residual_values.append(model.model.layers[layer].output[0][:, -1])
+            
+            # Scale residual output by std of final residual
+            residual_final_pre_ln = model.model.layers[-1].output[0][:, -1] #[batch, d_model]
+            residual_final_sf = residual_final_pre_ln.std(-1, keepdim=True) #[batch, 1]. This is the scaling factor
+            residual_values = t.stack(residual_values) / residual_final_sf #[components, batch, d_model], components = n_layers*2
+            print(f"{residual_values.shape=}")
+
+            # Get logits
+            logits = model.lm_head(residual_values).mean(0).squeeze().save()
+    print(f"{logits.value.shape=}")
+    return logits.value
+
+def compare_logits(model: LanguageModel,
+                   get_residual_logits: Callable,
+                   prompt_A: List[str],
+                   prompt_B: List[str],
+                   top_k: int = 10):
+    
+    logits_A = get_residual_logits(model, prompt_A)
+    logits_B = get_residual_logits(model, prompt_B)
+    abs_diff = t.abs(logits_A - logits_B)
+    sorted_indices = t.argsort(abs_diff, descending=True)
+    top_indices = sorted_indices[:top_k]
+    top_logit_diff = abs_diff[top_indices]
+    top_tokens = [tokenizer.decode(token_id.item()) for token_id in top_indices]
+    print(f"Top tokens: {top_tokens}")
+    print(f"Top logit diff: {top_logit_diff}")
+    return top_tokens, top_indices, top_logit_diff
+
+#%%
+compare_logits(model, 
+               get_residual_logits, 
+               prompt_A=dataset['harmless'], 
+               prompt_B=dataset['suffix'])
 #%%
 # Get logit difference for harmless and harmful prompts
 harmless_logit_diff, harmless_predicted_words = get_residual_logit_diff(model=model, 
@@ -133,7 +175,7 @@ harmful_logit_diff, harmful_predicted_words = get_residual_logit_diff(model=mode
                                                                       prompts=dataset['harmful'], 
                                                                       answer_token_ids=[sorry_id, sure_id],
                                                                       per_prompt=True)
-harmful_suf_logit_diff, harmful_suf_predicted_words = get_residual_logit_diff(model=model, 
+suffix_logit_diff, suffix_predicted_words = get_residual_logit_diff(model=model, 
                                                                               prompts=dataset['suffix'], 
                                                                               answer_token_ids=[sorry_id, sure_id], 
                                                                               per_prompt=True)
@@ -142,7 +184,7 @@ harmful_suf_logit_diff, harmful_suf_predicted_words = get_residual_logit_diff(mo
 
 print("Harmless predicted words:", harmless_predicted_words)
 print("Harmful predicted words:", harmful_predicted_words)
-print("Suffix predicted words:", harmful_suf_predicted_words)
+print("Suffix predicted words:", suffix_predicted_words)
 
 # %%
 # Plotting
@@ -161,7 +203,7 @@ for statement in dataset['harmless'] + dataset['harmful']:
 plt.figure(figsize=(10, 6))
 harmless_logit_diff_cpu = harmless_logit_diff.cpu().numpy()
 harmful_logit_diff_cpu = harmful_logit_diff.cpu().numpy()
-harmful_suf_logit_diff_cpu = harmful_suf_logit_diff.cpu().numpy()
+harmful_suf_logit_diff_cpu = suffix_logit_diff.cpu().numpy()
 
 # Per prompt
 for prompt in range(harmless_logit_diff.shape[-1]):
@@ -172,7 +214,7 @@ for prompt in range(harmful_logit_diff.shape[-1]):
     assert harmful_logit_diff_cpu.shape[-1] == len(harmful_labels)
     plt.plot(harmful_logit_diff_cpu[:, prompt], color='red', label=harmful_labels[prompt])
 
-for prompt in range(harmful_suf_logit_diff.shape[-1]):
+for prompt in range(suffix_logit_diff.shape[-1]):
     assert harmful_suf_logit_diff_cpu.shape[-1] == len(harmful_labels)
     plt.plot(harmful_suf_logit_diff_cpu[:, prompt], color='green', label=harmful_suf_labels[prompt])
 

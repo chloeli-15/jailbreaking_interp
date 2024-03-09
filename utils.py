@@ -1,3 +1,15 @@
+import json
+
+def import_json(filepath):
+    with open(filepath, 'r') as f:
+        data = json.load(f)
+    return data
+
+def export_to_txt(output, filepath='output.txt'):
+    with open(filepath, 'a') as f:
+        f.write(output + "\n") 
+
+
 
 # For GPT2-Small
 # def get_logit_diff_per_layer(model: LanguageModel, prompts: List[str], answer_token_ids: List[Int], per_prompt: bool = False) -> Float:
@@ -192,6 +204,4 @@
 #     ld_norm = ld_unnormalized / (harmless_refusal_score.value - harmless_refusal_score.value)
 #     return ld_norm
 
-def write_output_to_file(output, filepath='output.txt'):
-    with open(filepath, 'a') as f:
-        f.write(output + "\n") 
+
