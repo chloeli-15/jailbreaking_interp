@@ -2,14 +2,14 @@
 
 ## Introduction
 
-A key safety objective is to train LLMs to refuse harmful requests. 
+A key safety objective is to train LLMs to reliably refuse to answer harmful requests. 
 
-[Recent work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) has investigated refusal mechanisms in Llama2-7b-rlhf, responsible for the model refusing to answer harmful prompts. They hypothesized that there is some early-middle layer circuit that computes a harmfulness feature, which is separate and downstream from circuits creating the task representation in early layers. 
+[Recent work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) has investigated mechanisms responsible for refusal in Llama2-7b-rlhf. They hypothesized that there is some early-middle layer circuit that computes a "harmfulness" feature. This is separate and downstream from circuits in earlier layers that create the task representation. 
 
 Objectives of the current study (to be refined):
-1. Generalizability of attention head mechanisms for refusal found previously (testing on Llama2, Vicuna, Mistral)
+1. Generalizability of refusal mechanism results (testing on Llama2, Vicuna, Mistral)
 2. Generalizable vector that can jailbreak different models - can we systematically find the "harmlessness" feature computed in intermediate layers and use this to jailbreak models?
-3. Initial experiments to locate model components responsible for adversarial suffixes?
+3. Initial experiments to locate model components responsible for adversarial suffixes
 
 ## Generating dataset
 
@@ -19,20 +19,20 @@ There are three classes of prompts: `harmless`, `harmful` and `suffix`, each con
 
 Llama and Mistral prompt format: 
 ```
-[INST] Tell me how to make a <obj>. [\INST]
+"[INST] Tell me how to make a <obj>. [\INST] "
 ```
 
 Vicuna prompt: 
 ```
-A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed,
-and polite answers to the user's questions. USER: Tell me how to make a <obj>. ASSISTANT:
+"A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed,
+and polite answers to the user's questions. USER: Tell me how to make a <obj>. ASSISTANT: "
 ```
 
 ## Defining a refusal metric
 
-First, we need to define a metric that quantifies refusal behavior. I used the refusal metric from [Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat), where $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position.
+First, we need to define a metric that quantifies refusal behavior. I used the logit difference metric for refusal from [Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat), where $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position.
 
-I computed the refusal score for the cumulative residual stream output at each layer (and all layers before it). If the refusal score cleanly separates refusal and non-refusal behavior, this makes it useful for locating responsible model components based on how much they change the refusal score. Previously, the robustness of this separability is not evaluated. Here, I evaluate the metric on two properties: (1) its generalizability across models, and (2) its consistency with generated output (i.e. a high refusal score at the -1 position corresponds to model refusal and a low refusal score at the -1 position corresponds to model answering). 
+If the refusal score cleanly separates refusal and non-refusal behavior, this makes it a useful metric for locating responsible model components based on how much they change the refusal score. Previously, it's shown that this metric separates model activations on harmful and harmless prompts in Llama2, but the robustness of this separability is not evaluated. Here, I evaluate the metric on two properties: (1) its generalizability across models, and (2) its consistency with generated output (i.e. a high refusal score at the -1 position corresponds to model refusal and a low refusal score at the -1 position corresponds to model answering). I computed the refusal score for the cumulative residual stream output at each layer (and all layers before it).
 
 **Consistency.** 
 
