@@ -1,4 +1,8 @@
 import json
+import nnsight
+from nnsight import LanguageModel
+from nnsight.intervention import InterventionProxy
+from typing import List, Literal, Optional, Tuple, Union
 
 def import_json(filepath):
     with open(filepath, 'r') as f:
@@ -9,6 +13,25 @@ def export_to_txt(output, filepath='output.txt'):
     with open(filepath, 'a') as f:
         f.write(output + "\n") 
 
+def generate_tokens(model: LanguageModel, 
+                    prompts: Union[List[str], str], 
+                    n_tokens: int,
+                    REMOTE: bool = False) -> List[str]:
+    """Generate tokens from prompts.
+    Args:
+        model (LanguageModel): Language model.
+        prompts (List[str]): List of prompts.
+        n_tokens (int): Number of tokens to generate.
+    Returns:
+        Tensor: Tensor of shape (batch_size, seq_len) containing token ids.
+    """
+    with model.generate(remote=REMOTE, max_new_tokens = n_tokens, remote_include_output = True) as generator:
+        with generator.invoke(prompts) as invoker:
+            for i in range(n_tokens):
+                invoker.next()
+
+    generated_tokens = generator.output
+    return generated_tokens # Tensor of shape (batch_size, seq_len) containing token ids
 
 
 # For GPT2-Small

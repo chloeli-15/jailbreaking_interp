@@ -554,32 +554,33 @@ def patch_attn_out_cumulative(model: LanguageModel,
     return refusal_score_diff_from_harmless
 
 #%%
-patch_attn_cumulative = t.empty((n_layers, 6))
-for pos in range(-6, 0):
+target_pos = -6
+patch_attn_cumulative = t.empty((n_layers, abs(target_pos)))
+for pos in range(target_pos, 0):
     for layer in range(0, n_layers, 2):
-        patch_attn_cumulative[layer:layer+2, pos+6] = patch_attn_out_cumulative(model=model, 
+        patch_attn_cumulative[layer:layer+2, pos+abs(target_pos)] = patch_attn_out_cumulative(model=model, 
                                                         receiver_prompts=dataset['harmless'], 
                                                         source_prompts=dataset['harmful'], 
                                                         answer_token_ids=[sorry_id, sure_id], 
                                                         target_pos=pos,
                                                         suffix_pos=None,
                                                         target_layers = [layer, layer+1])
-# t.save(patch_attn_cumulative, "/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patching_attn_cumulative.pt")
+t.save(patch_attn_cumulative, "/root/andy-a6000-backup/users/chloe/jailbreak/results/attn_cumulative_llama.pt")
 # %%
-suffix_pos = list(range(-8,-5)) + [-1]
-target_pos = [-6]*(len(suffix_pos)-1) + [-1]
-assert len(target_pos) == len(suffix_pos), f"{len(target_pos)=} != {len(suffix_pos)=}"
-cumulative_attn_patching_suffix_3 = t.empty((n_layers, len(target_pos)))
-# for i, pos in enumerate(target_pos):
-for i, (pos, suf_pos) in enumerate(zip(target_pos, suffix_pos)):
-    for layer in range(0, n_layers, 2):
-        cumulative_attn_patching_suffix_3[layer:layer+2, i] = patch_attn_out_cumulative(model=model, 
-                                                        receiver_prompts=dataset['harmful'], 
-                                                        source_prompts=dataset['suffix'], 
-                                                        answer_token_ids=[sorry_id, sure_id], 
-                                                        target_pos= pos, #-6,
-                                                        suffix_pos = suf_pos, #None,
-                                                        target_layers = [layer, layer+1])
+# suffix_pos = list(range(-8,-5)) + [-1]
+# target_pos = [-6]*(len(suffix_pos)-1) + [-1]
+# assert len(target_pos) == len(suffix_pos), f"{len(target_pos)=} != {len(suffix_pos)=}"
+# cumulative_attn_patching_suffix_3 = t.empty((n_layers, len(target_pos)))
+# # for i, pos in enumerate(target_pos):
+# for i, (pos, suf_pos) in enumerate(zip(target_pos, suffix_pos)):
+#     for layer in range(0, n_layers, 2):
+#         cumulative_attn_patching_suffix_3[layer:layer+2, i] = patch_attn_out_cumulative(model=model, 
+#                                                         receiver_prompts=dataset['harmful'], 
+#                                                         source_prompts=dataset['suffix'], 
+#                                                         answer_token_ids=[sorry_id, sure_id], 
+#                                                         target_pos= pos, #-6,
+#                                                         suffix_pos = suf_pos, #None,
+#                                                         target_layers = [layer, layer+1])
 
 
 
@@ -597,7 +598,7 @@ position_axis = ["'<obj>'\n(-6)"]+[f"{repr(model.tokenizer.decode(tokens[0, seq_
 # position_axis = ["'<obj>'"]+["'<suf>[-1]' \n -> '.'"]+[f"{repr(model.tokenizer.decode(tokens[0, seq_pos]))} \n ({i})" for seq_pos, i in zip(range(seq_len+target_pos+2, seq_len), range(seq_len+target_pos+1+2, seq_len+1))]
 
 #from plotly_utils import imshow
-fig, ax = plt.subplots(figsize=(abs(len(target_pos)), 6))
+fig, ax = plt.subplots(figsize=(abs(target_pos), 6))
 plt.imshow(
     score.cpu().numpy(),
     cmap='RdBu',
@@ -605,7 +606,7 @@ plt.imshow(
     vmax=1,
     aspect='auto'
     )
-plt.title(f"Llama2: Activation patching of cumulative attn_out, {source} \u2192 {receiver}")
+plt.title(f"Llama2: Patching cumulative attn_out, {source} \u2192 {receiver}")
 plt.xlabel("Positions")
 plt.ylabel("Layers")
 plt.xticks(range(len(position_axis)), position_axis)
@@ -618,7 +619,6 @@ plt.show()
 
 # %%
 # Generate tokens
-
 def generate_tokens(model: LanguageModel, 
                     prompts: List[str], 
                     n_tokens: int) -> List[str]:
@@ -659,9 +659,7 @@ generated_tokens = generate_tokens(model=model, prompts=tokens, n_tokens=50)
 for x in tokenizer.batch_decode(generated_tokens):
     print(repr(x), "\n +++++++++ \n")
 
-# %%
 
-# %%
 
 #%%
 # Generation with patching
@@ -806,42 +804,42 @@ refusal_score, response, output = generate_with_patch(model=model,
 print(f"Refusal_score:{refusal_score}, \nResponse:{response}")
 
 #%%
-def find_target_pos(model: LanguageModel,
-                    prompt: Union[List[str], str],
-                    target_token_tripple: List[int]) -> List[int]:
-    assert len(target_token_tripple) == 3, f"{len(target_token_tripple)=}"
+# def find_target_pos(model: LanguageModel,
+#                     prompt: Union[List[str], str],
+#                     target_token_tripple: List[int]) -> List[int]:
+#     assert len(target_token_tripple) == 3, f"{len(target_token_tripple)=}"
 
-    target_token = target_token_tripple[1]
-    model.tokenizer.padding_side = "left"
-    tokens = model.tokenizer(prompt, return_tensors='pt', padding=True)['input_ids'].to(device)
-    target_pos = []
-    # Single prompt
-    if isinstance(prompt, str):
-        target_pos 
-        for token_id in tokens:
-            target_pos.append((tokens[0] == target_id).nonzero(as_tuple=True)[0].item())
-    # Batch prompts
-    elif isinstance(prompt, list):
-        for prompt in tokens:
-            ids_per_prompt = []
-            for pos, tok_id in enumerate(prompt):
-                if tok_id == target_ids[0]:
-                    ids_per_prompt.append(pos)
-                elif tok_id == target_ids[1]:
-                    ids_per_prompt.append(pos+1)
-        all_ids_per_prompt = list(range(ids_per_prompt[0], ids_per_prompt[-1]+1))
-        source_target_pos.append(all_ids_per_prompt)
-        target_pos.append((prompt == target_id).nonzero(as_tuple=True)[0].item())
-    for prompt in source_tokens:
+#     target_token = target_token_tripple[1]
+#     model.tokenizer.padding_side = "left"
+#     tokens = model.tokenizer(prompt, return_tensors='pt', padding=True)['input_ids'].to(device)
+#     target_pos = []
+#     # Single prompt
+#     if isinstance(prompt, str):
+#         target_pos 
+#         for token_id in tokens:
+#             target_pos.append((tokens[0] == target_id).nonzero(as_tuple=True)[0].item())
+#     # Batch prompts
+#     elif isinstance(prompt, list):
+#         for prompt in tokens:
+#             ids_per_prompt = []
+#             for pos, tok_id in enumerate(prompt):
+#                 if tok_id == target_ids[0]:
+#                     ids_per_prompt.append(pos)
+#                 elif tok_id == target_ids[1]:
+#                     ids_per_prompt.append(pos+1)
+#         all_ids_per_prompt = list(range(ids_per_prompt[0], ids_per_prompt[-1]+1))
+#         source_target_pos.append(all_ids_per_prompt)
+#         target_pos.append((prompt == target_id).nonzero(as_tuple=True)[0].item())
+#     for prompt in source_tokens:
         
         
         
-    assert all(target_pos_per_prompt == source_target_pos[0] for target_pos_per_prompt in source_target_pos), "You don't have the same target positions for each prompt"
-    source_target_pos = source_target_pos[0]
-    print(f"Number of positions: {len(source_target_pos)}")
-    for token in source_target_pos:
-        print(f"{repr(model.tokenizer.decode(source_tokens[0, token]))} ({token})")
-    print(f"{source_target_pos=}")
+#     assert all(target_pos_per_prompt == source_target_pos[0] for target_pos_per_prompt in source_target_pos), "You don't have the same target positions for each prompt"
+#     source_target_pos = source_target_pos[0]
+#     print(f"Number of positions: {len(source_target_pos)}")
+#     for token in source_target_pos:
+#         print(f"{repr(model.tokenizer.decode(source_tokens[0, token]))} ({token})")
+#     print(f"{source_target_pos=}")
 #%%
     # Setence plots
 def my_viz(
