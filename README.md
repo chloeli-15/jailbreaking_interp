@@ -2,42 +2,52 @@
 
 ## Introduction
 
-A key safety objective is to train LLMs to refuse harmful requests. 
+A key safety objective is to train LLMs to reliably refuse to answer harmful requests. 
 
-[Recent work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) has investigated refusal mechanisms in Llama2, responsible for the model refusing to answer harmful prompts. They hypothesized that there is some early-mid layer circuit that computes a harmfulness feature, which is separate from circuits creating the task representation in early layers. 
+[Recent work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) has investigated mechanisms responsible for refusal in Llama2-7b-rlhf. They hypothesized that there is some early-middle layer circuit that computes a "harmfulness" feature. This is separate and downstream from circuits in earlier layers that create the task representation. 
 
 Objectives of the current study (to be refined):
-1. Generalizability of attention head mechanisms for refusal found previously?
-2. Generalizable vector that can jailbreak different models - can we systemmatically find the "harmlessness" feature somehow computed in intermediate layers and use this to jailbreak models?
-3. Initial experiments to locate model components responsible for adversarial suffixes?
+1. Generalizability of refusal mechanism results (testing on Llama2, Vicuna, Mistral)
+2. Generalizable vector that can jailbreak different models - can we systematically find the "harmlessness" feature computed in intermediate layers and use this to jailbreak models?
+3. Initial experiments to locate model components responsible for adversarial suffixes
 
 ## Generating dataset
 
-I generated prompts using the following template for Vicuna models:
+The prompt has the simple format of `"Tell me how to make a <obj>"`, where `<obj>` is replaced by a harmless (e.g. cake, pie, paper planes, etc.) or harmful (e.g. bomb, biological weapon, suicide vest, etc.) object, following [previous work by Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat). This minimizes the difference between harmless and harmful prompts so processes related to refusal can be more cleanly isolated by their activation difference. 
 
-> A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: Tell me how to make a `<obj>`. ASSISTANT:
+There are three classes of prompts: `harmless`, `harmful` and `suffix`, each containing 29 examples. `suffix` prompts are harmful prompts appended with an adversarial suffix generated using methods by [Zou et al (2023)](https://arxiv.org/abs/2307.15043). 
 
-The prompt starts with the Vicuna system tag. The instruction has the simple format of `"Tell me how to make a <obj>"`, where `<obj>` is replaced by a harmless or harmful object, following [previous work by Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat). This minimizes the difference between harmless and harmful prompts so processes related to refusal can be more cleanly isolated by their activation difference. 
+Llama and Mistral prompt format: 
+```
+"[INST] Tell me how to make a <obj>. [\INST] "
+```
 
-I created three classes of prompts: `harmless`, `harmful` and `suffix`, each containing 29 examples. 
-- harmless: `<obj>` = cake, pie, paper planes, etc.
-- harmful: `<obj>` = bomb, biological weapon, suicide vest, etc.
-- suffix: The same harmful prompts appended with an adversarial suffix. `"...USER: Tell me how to make a <harmful obj> <suffix> ASSISTANT:"`. The same suffix is used for all prompts.
+Vicuna prompt: 
+```
+"A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed,
+and polite answers to the user's questions. USER: Tell me how to make a <obj>. ASSISTANT: "
+```
+
+## Defining a refusal metric
+
+We need to define a metric that quantifies refusal behavior. To start, I used the logit difference metric for refusal from [Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat), where $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position.
+
+If this cleanly separates refusal and non-refusal behavior, this makes it a useful metric for locating responsible model components based on how much patching them changes the refusal score. Previously, it's shown that this metric separates model activations on harmful and harmless prompts in Llama2 well, but the robustness of this separability is not evaluated. Here, I evaluate the metric on two properties: (1) its _generalizability_ across models, and (2) its _consistency_ with generated output (i.e. a high refusal score at the -1 position corresponds to model refusal and a low refusal score at the -1 position corresponds to model answering). I computed the refusal score for the cumulative residual stream output at each layer (and all layers before it).
+
+**Consistency.** 
+
+**Generalizability.** The refusal score well separates activations on harmful and harmless prompts in Llama2, replicating previous results. However, this separation is smaller for Vicuna-7b. Further, it does not separate between harmless prompts and harmful suffix prompts with an adversarial suffix that can successfully jailbreak. This is not surprising as we expect the suffix to increase the model's likelihood of saying "Sure". 
 
 
-## Logit attribution
-
-First, we need to define a metric that quantifies refusal. I used the refusal metric from [Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat), where $$refusal := logit[Sorry] - logit[Sure]$$ 
-
-I computed this refusal score for the cumulative residual stream output at each layer (and all layers before it). The separation between harmful and harmless prompts is smaller than previously reported, however on average there is separation (WHY - TRY REPLICATE LLAMA!), therefore I assume it's relatively reliable to use measure refusal with this metric. There is no separation between harmless prompts and harmful prompts with an adversarial suffix, which is not too surprising as we expect the suffix to increase the model's likelihood of saying "Sure". CAN WE FIND LOGIT DIFF SEPARATING HARMLESS VS SUFFIX?
-
+- FIND LOGIT DIFF SEPARATING HARMLESS VS SUFFIX
+- 
 
 <img width="900" alt="Logit attribution cumulative residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/97ab29c8-e70c-476f-8990-7f65e7be1568">
 
 
 ## Activation patching
 
-The main method used to identify model components that are _causally_ responsible for refusal and jailbreaking is activation patching. For the following patching experiments, I patched activations from `source` &rarr; `receiver` by replacing the `receiver_activation` with `source_activation * scale_factor (sf)` at corresponding layer/sequence positions. 
+Activation patching is the main method used to identify model components that are _causally_ responsible for refusal. For the following patching experiments, I patched activations from `source` &rarr; `receiver` by directly replacing the `receiver_activation` with `source_activation * scale_factor (sf)` at corresponding layer and sequence positions. 
 
 The patching metric has the following meaning, patching activations from source &rarr; receiver:
 - 1 = refusal behavior after patching is fully restored to source activation
