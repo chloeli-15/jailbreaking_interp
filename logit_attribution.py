@@ -225,6 +225,8 @@ def compare_logits(model: LanguageModel,
     logits_A = get_residual_logits(model, prompt_A)
     logits_B = get_residual_logits(model, prompt_B)
     abs_diff = t.abs(logits_A - logits_B)
+    del logits_A
+    del logits_B
     sorted_indices = t.argsort(abs_diff, descending=True)
     top_indices = sorted_indices[:top_k]
     top_logit_diff = abs_diff[top_indices]

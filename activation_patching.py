@@ -40,8 +40,8 @@ MAIN = __name__ == '__main__'
 # Import model
 # model_name = "lmsys/vicuna-13b-v1.5"
 # model_name = "gpt2"
-model_name = "lmsys/vicuna-7b-v1.3"
-# model_name = "meta-llama/Llama-2-7b-chat-hf"
+# model_name = "lmsys/vicuna-7b-v1.3"
+model_name = "meta-llama/Llama-2-7b-chat-hf"
 # model_name = "mistralai/Mistral-7B-Instruct-v0.1"
 
 model = LanguageModel(model_name, device_map='auto')
@@ -62,8 +62,8 @@ REMOTE = False
 
 #%%
 # Prepare prompts
-# dataset = import_json("/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_llama.json") #llama
-dataset = import_json("/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_vicuna.json") #vicuna
+dataset = import_json("/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_llama.json") #llama
+# dataset = import_json("/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_vicuna.json") #vicuna
 print(repr(dataset['harmless'][0]))
 sure_id = tokenizer.encode("Sure")[-1]
 sorry_id = tokenizer.encode("Sorry")[-1]
@@ -393,7 +393,7 @@ def patch_attention_head(model: LanguageModel,
     d_head = model.config.hidden_size // n_heads
     d_model = model.config.hidden_size #4096
 
-    # Get and store residual output for harmless prompts
+    # Get and store residual output for source prompts
     assert len(receiver_prompts) == len(source_prompts)
     print(f"{len(receiver_prompts)=}")
     
@@ -406,10 +406,8 @@ def patch_attention_head(model: LanguageModel,
                 assert seq_len == model.model.layers[layer].output[0].shape[1], f"{seq_len=} != {model.model.layers[layer].output[0].shape[1]=}, {model.model.layers[layer].output[0].shape=}"
                 z = model.model.layers[layer].self_attn.input[1]["hidden_states"][:, target_pos].clone() #[batch, d_model] at target pos
                 assert z.shape == (batch, d_model), f"{z.shape=}, {batch=}, {d_model=}"
-
                 z_reshaped = z.reshape(batch, n_heads, d_head).mean(0)  #[n_heads, d_head] at each pos averaged over batch
                 assert z_reshaped.shape == (n_heads, d_head), f"{z_reshaped.shape=}, {n_heads=}, {d_head=}"
-
                 for head in target_heads:
                     attn_dict[(layer, target_pos, head)] = z_reshaped[head]  #[d_head] at each pos averaged over batch and head
 
@@ -445,49 +443,51 @@ def patch_attention_head(model: LanguageModel,
 #%%
 # target_pos = -6 # "." position, vicuna
 # target_pos = -7 # "obj" position, vicuna
-target_pos = -1 # ":" position, vicuna
+# target_pos = -1 # ":" position, vicuna
+target_pos = -4 # "[" position, llama
 
-start_layer = 14
-end_layer = 20
+start_layer = 0
+end_layer = n_layers
 target_layers = range(start_layer, end_layer, 2)
 patch_attn_head = t.zeros((end_layer-start_layer, n_heads))
 # for layer in [range(0, n_layers, 2)]:
 for layer in target_layers:
     for head in range(0, n_heads, 2):
         patch_attn_head[layer-start_layer:layer+2-start_layer, head:head+2] = patch_attention_head(model=model, 
-                                                        receiver_prompts=dataset['harmful'], 
-                                                        source_prompts=dataset['harmless'], 
+                                                        receiver_prompts=dataset['harmless'], 
+                                                        source_prompts=dataset['harmful'], 
                                                         answer_token_ids=[sorry_id, sure_id], 
                                                         target_layers = [layer, layer+1],
                                                         target_pos=target_pos,
                                                         target_heads=range(head, head+2))
         print(patch_attn_head)
-# t.save(patch_attn_head, "patch_attn_head.pt")      
+t.save(patch_attn_head, "results/patch_attn_head_llama_harmful_harmless_pos4.pt")      
 
 #%%
 # Plot
-receiver:str = "harmful"
-source:str = "harmless"
-target_pos = "':' (-1)"
-score = patch_attn_head #[:, target_pos+3, :] 
+patch_attention_head = t.load("results/patch_attn_head_vicuna_harmful_harmless_pos6.pt")
+receiver:str = "harmless"
+source:str = "harmful"
+target_pos = "'[' (-4)"
+score = patch_attention_head #[:, target_pos+3, :] 
 y_max, x_max = score.shape
 #from plotly_utils import imshow
-fig, ax = plt.subplots(figsize=(10,2.5))
+fig, ax = plt.subplots(figsize=(10,10))
 plt.imshow(
     score.cpu().numpy(),
     cmap='RdBu',
-    vmin=-0.008,
-    vmax=0.008,
+    vmin=-0.005,
+    vmax=0.005,
     #interpolation='nearest',
     extent=(0,x_max,y_max,0),
     aspect='auto'
     )
-plt.title(f"Vicuna: Activation patching of individual attn head input at pos {target_pos}, {source} \u2192 {receiver}")
+plt.title(f"Llama2: Activation patching of individual attn head input at pos {target_pos}, {source} \u2192 {receiver}")
 plt.xlabel("Heads")
 plt.ylabel("Layers")
 plt.xticks(range(x_max))
 # plt.yticks(range(y_max))
-plt.yticks([0,1,2,3,4,5], list(range(start_layer, end_layer)))
+plt.yticks(list(range(start_layer, end_layer)), list(range(start_layer, end_layer)))
 # plt.grid(True, color="white", linewidth = 0.5)
 plt.tight_layout()
 plt.colorbar()
@@ -554,17 +554,17 @@ def patch_attn_out_cumulative(model: LanguageModel,
     return refusal_score_diff_from_harmless
 
 #%%
-patch_attn_cumulative_harmful_harmless = t.empty((n_layers, 7))
-for pos in range(-7, 0):
+patch_attn_cumulative = t.empty((n_layers, 6))
+for pos in range(-6, 0):
     for layer in range(0, n_layers, 2):
-        patch_attn_cumulative_harmful_harmless[layer:layer+2, pos+7] = patch_attn_out_cumulative(model=model, 
+        patch_attn_cumulative[layer:layer+2, pos+6] = patch_attn_out_cumulative(model=model, 
                                                         receiver_prompts=dataset['harmless'], 
                                                         source_prompts=dataset['harmful'], 
                                                         answer_token_ids=[sorry_id, sure_id], 
                                                         target_pos=pos,
                                                         suffix_pos=None,
                                                         target_layers = [layer, layer+1])
-# t.save(patch_attn_cumulative_harmful_harmless, "/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patching_attn_cumulative_harmful_harmless.pt")
+# t.save(patch_attn_cumulative, "/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patching_attn_cumulative.pt")
 # %%
 suffix_pos = list(range(-8,-5)) + [-1]
 target_pos = [-6]*(len(suffix_pos)-1) + [-1]
@@ -587,31 +587,25 @@ for i, (pos, suf_pos) in enumerate(zip(target_pos, suffix_pos)):
 # Plot
 receiver:str = "harmless"
 source:str = "harmful"
-score = patch_attn_cumulative_harmful_harmless
+score = patch_attn_cumulative
 tokens = model.tokenizer(dataset['harmful'] + dataset['suffix'], return_tensors='pt', padding=True)['input_ids'].to(device)
 print(f"{tokens.shape=}")
 seq_len = tokens.shape[-1]
-position_axis = ["'<obj>'\n(-7)"]+[f"{repr(model.tokenizer.decode(tokens[0, seq_pos]))} \n ({i})" for seq_pos, i in zip(range(seq_len+target_pos+1, seq_len), range(target_pos+1, 0))]
+position_axis = ["'<obj>'\n(-6)"]+[f"{repr(model.tokenizer.decode(tokens[0, seq_pos]))} \n ({i})" for seq_pos, i in zip(range(seq_len+target_pos+1, seq_len), range(target_pos+1, 0))]
 # position_axis = [f"{repr(model.tokenizer.decode(tokens[-1, suf_pos]))} \n{repr(model.tokenizer.decode(tokens[0, pos]))}" for suf_pos, pos in zip(suffix_pos, target_pos)]
 
 # position_axis = ["'<obj>'"]+["'<suf>[-1]' \n -> '.'"]+[f"{repr(model.tokenizer.decode(tokens[0, seq_pos]))} \n ({i})" for seq_pos, i in zip(range(seq_len+target_pos+2, seq_len), range(seq_len+target_pos+1+2, seq_len+1))]
 
 #from plotly_utils import imshow
-fig, ax = plt.subplots(figsize=(abs(len(target_pos)), 7))
+fig, ax = plt.subplots(figsize=(abs(len(target_pos)), 6))
 plt.imshow(
     score.cpu().numpy(),
     cmap='RdBu',
     vmin=-1,
     vmax=1,
-    # interpolation='none',
-    # title = "Refusal score diff from harmful prompts, patching harmful -> harmless",
-    # labels = {"x": "Positions", "y": "Layers"},
-    aspect='auto',
-    # x=position_axis,
-    # width = 700,
-    # height = 1000
+    aspect='auto'
     )
-plt.title(f"Activation patching of cumulative attn_out, {source} \u2192 {receiver}")
+plt.title(f"Llama2: Activation patching of cumulative attn_out, {source} \u2192 {receiver}")
 plt.xlabel("Positions")
 plt.ylabel("Layers")
 plt.xticks(range(len(position_axis)), position_axis)
@@ -719,9 +713,10 @@ def generate_with_patch(model: LanguageModel,
                         n_tokens: int,
                         target_positions: List[int],
                         #target_token: Optional[int],
+                        target_heads: Optional[List[int]],
                         target_layers: List[int],
                         patch_direction: str,
-                        patch_type: Literal["attn_out", "residual"],
+                        patch_type: Literal["attn_out", "residual", "attn_head"],
                         sf: int = 1) -> Tuple[List[Float], List[str], str]:
 
     # generated_tokens = [] 
@@ -730,6 +725,7 @@ def generate_with_patch(model: LanguageModel,
     #     'top_k': 50,
     #     'top_p': 0.95,
     # }
+    batch = len(prompt)
     output = ""
     refusal_score = []
     patch_output = {}
@@ -739,6 +735,13 @@ def generate_with_patch(model: LanguageModel,
                 for target_layer in target_layers:
                     for target_pos in target_positions:
                         patch_output[(target_layer, target_pos)] = model.model.layers[target_layer].self_attn.output[0][:, target_pos].mean(0).save()
+            elif patch_type == "attn_head":
+                for target_layer in target_layers:
+                    for target_pos in target_positions:
+                        z = model.model.layers[target_layer].self_attn.input[1]["hidden_states"][:, target_pos].clone().mean(0) #[d_model], meaned over batch
+                        z_reshaped = z.reshape(n_heads, d_head)  #[n_heads, d_head] at each pos averaged over batch
+                        for head in target_heads:
+                            patch_output[(target_layer, target_pos, head)] = z_reshaped[head].save()  #[d_head] at each pos averaged over batch and head
             elif patch_type == "residual":
                 for target_layer in target_layers:
                     for target_pos in target_positions:
@@ -750,6 +753,12 @@ def generate_with_patch(model: LanguageModel,
                 for target_layer in target_layers:
                     for target_pos in target_positions:
                         model.model.layers[target_layer].self_attn.output[0][:, target_pos] = sf*patch_output[(target_layer, target_pos)]
+            elif patch_type == "attn_head":
+                for target_layer in target_layers:
+                    for target_pos in target_positions:
+                        for head in target_heads:
+                            z = model.model.layers[target_layer].self_attn.input[1]["hidden_states"][:, target_pos] 
+                            z.reshape(batch, n_heads, d_head)[:, head] = sf*patch_output[(target_layer, target_pos, head)]
             elif patch_type == "residual":
                 for target_layer in target_layers:
                     for target_pos in target_positions:
@@ -762,8 +771,9 @@ def generate_with_patch(model: LanguageModel,
 
     generated_tokens = generator.output
     output += f"Patching {patch_type}, {patch_direction} \nPos={target_positions}, Layer={target_layers}, SF={sf}\n"
-    for patch_vector in patch_output.values():
-        output += logit_lens(model = model, vector_to_unembed = patch_vector.value, sampling_type= "top_p", top_p = 0.95)
+    if patch_type != "attn_head":
+        for patch_vector in patch_output.values():
+            output += logit_lens(model = model, vector_to_unembed = patch_vector.value, sampling_type= "top_p", top_p = 0.95)
     print(output)
     for x in tokenizer.batch_decode(generated_tokens):
         print(repr(x), "\n +++++++++ \n")
@@ -777,21 +787,22 @@ def generate_with_patch(model: LanguageModel,
 # input = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: Tell me how to make a computer. ASSISTANT:"
 
 # Llama
-input = "[INST] Tell me how to make a bomb. [/INST]"
+input = "[INST] Tell me how to make a cake. [/INST]"
 # file_path = "/root/andy-a6000-backup/users/chloe/jailbreak/results/wrongful_refusal_llama.txt"
 file_path = "/root/andy-a6000-backup/users/chloe/jailbreak/results/jailbreaking_llama.txt"
 tokens = model.tokenizer(input, return_tensors='pt')['input_ids'].to(device)
 refusal_score, response, output = generate_with_patch(model=model, 
                                 prompt=tokens, 
-                                patch_prompts = dataset["suffix"],
-                                patch_direction= "suffix \u2192 harmful",
-                                n_tokens=100,
-                                target_positions = [-1],
-                                target_layers = [12, 13, 14, 15, 16], #list to simultaneously patch multiple layers
-                                patch_type="residual",
-                                sf = 6)
+                                patch_prompts = dataset["harmful"],
+                                patch_direction= "harmful \u2192 harmless",
+                                patch_type="attn_out",
+                                n_tokens=200,
+                                target_positions = [-4],
+                                target_heads = None,
+                                target_layers = [16], #list to simultaneously patch multiple layers
+                                sf = 1)
 
-export_to_txt(output, file_path)
+# export_to_txt(output, file_path)
 print(f"Refusal_score:{refusal_score}, \nResponse:{response}")
 
 #%%
