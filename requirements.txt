@@ -11,3 +11,4 @@ gdown
 nnsight 
 matplotlib 
 circuitsvis 
+pandas

@@ -5,9 +5,7 @@ ipython.run_line_magic("load_ext", "autoreload")
 ipython.run_line_magic("autoreload", "2")
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Union
-import plotly.express as px
 import torch as t
-import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from IPython.display import display, clear_output
@@ -40,7 +38,7 @@ MAIN = __name__ == '__main__'
 # Import model
 # model_name = "lmsys/vicuna-7b-v1.3"
 model_name = "meta-llama/Llama-2-7b-chat-hf"
-
+t.cuda.amp.autocast(enabled=False)
 model = LanguageModel(model_name, device_map='auto')
 tokenizer = model.tokenizer
 
@@ -97,14 +95,13 @@ def patch_residual(model: LanguageModel,
     seq_len = tokens.shape[-1]
     print(f"{seq_len=}")
 
-    # Get and store residual output for harmless prompts
     assert len(receiver_prompts) == len(source_prompts)
     
-    with model.forward(remote=REMOTE) as runner:
+    with model.trace() as tracer:
 
-        # Store residual output per layer for source prompts
+        # Clean run (source)
         source_resid_dict = {}
-        with runner.invoke(source_tokens) as invoker:
+        with tracer.invoke(source_tokens) as invoker:
             for layer in target_layers:
                 #for pos in range(seq_len+target_pos, seq_len):
                 assert seq_len == model.model.layers[layer].output[0].shape[1], f"{seq_len=} != {model.model.layers[layer].output[0].shape[1]=}, {model.model.layers[layer].output[0].shape=}"
@@ -112,8 +109,8 @@ def patch_residual(model: LanguageModel,
             logits = model.lm_head.output[:, -1] #[batch, vocab_size]
             source_refusal_score = (logits[:, answer_token_ids[0]] - logits[:, answer_token_ids[1]]).mean().save() #[batch,] -> scalar (averaged over batch)
         
-        # Get receiver refusal score to compare against
-        with runner.invoke(receiver_tokens) as invoker:
+        # Corrupted
+        with tracer.invoke(receiver_tokens) as invoker:
             logits = model.lm_head.output[:, -1] #[batch, d_model] at -1 position
             receiver_refusal_score = (logits[:, answer_token_ids[0]] - logits[:, answer_token_ids[1]]).mean().save()
 
@@ -121,7 +118,7 @@ def patch_residual(model: LanguageModel,
         intervened_refusal_score = {}
         for layer in target_layers:
             #for pos in range(seq_len+target_pos, seq_len):
-            with runner.invoke(receiver_tokens) as invoker:
+            with tracer.invoke(receiver_tokens) as invoker:
                 model.model.layers[layer].output[0][:, target_pos] = source_resid_dict[(layer, target_pos)]
                 logits = model.lm_head.output[:, -1]
                 intervened_refusal_score[(layer, target_pos)] = (logits[:, answer_token_ids[0]] - logits[:, answer_token_ids[1]]).save() #[batch,]
@@ -251,8 +248,8 @@ def get_target_pos_batch(model: LanguageModel,
 # Experiment: residual stream patching
 # target_pos = -7 #vicuna
 target_pos = -6 #llama, up to <obj>
-receiver_prompts = dataset['harmless']
-source_prompts = dataset['harmful']
+receiver_prompts = dataset['harmful']
+source_prompts = dataset['harmless']
 patch_resid = t.empty((n_layers, abs(target_pos)))
 for layer in range(0, n_layers,2):
     for pos in range(target_pos, 0):
