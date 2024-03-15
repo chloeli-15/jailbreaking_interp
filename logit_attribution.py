@@ -3,26 +3,20 @@ from IPython import get_ipython
 ipython = get_ipython()
 ipython.run_line_magic("load_ext", "autoreload")
 ipython.run_line_magic("autoreload", "2")
-import time
 from pathlib import Path
 from typing import Callable, List, Literal, Optional, Tuple, Union
 import numpy as np
-import openai
 import plotly.express as px
 import torch as t
-import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from IPython.display import display
 from jaxtyping import Float, Int
 from rich import print as rprint
 from rich.table import Table
-from tqdm import tqdm
 import einops
 import os
 import sys
-import gdown
-import zipfile
 from IPython.display import clear_output
 from collections import defaultdict
 import json
@@ -31,10 +25,7 @@ from nnsight import LanguageModel
 from nnsight.intervention import InterventionProxy
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import imshow
-import circuitsvis as cv
 import re
-from pprint import pprint
-from itertools import chain
 from utils import export_to_txt, import_json, generate_tokens
 # Hide bunch of info logging messages from nnsight
 import logging, warnings
@@ -45,13 +36,11 @@ t.set_grad_enabled(False);
 MAIN = __name__ == '__main__'
 # %%
 # Import model
-# model_name = "lmsys/vicuna-13b-v1.5"
-# model_name = "gpt2"
-model_name = "lmsys/vicuna-7b-v1.3"
-# model_name = "meta-llama/Llama-2-7b-chat-hf"
-# model_name = "mistralai/Mistral-7B-Instruct-v0.1"
+# model_name = "lmsys/vicuna-7b-v1.3"
+model_name = "meta-llama/Llama-2-7b-chat-hf"
+# model_name = "Qwen/Qwen-7B-Chat"
 
-model = LanguageModel(model_name, device_map='auto')
+model = LanguageModel(model_name, device_map='auto', trust_remote_code=True)
 tokenizer = model.tokenizer
 
 n_heads = model.config.num_attention_heads
@@ -69,7 +58,7 @@ REMOTE = False
 
 #%%
 # Prepare prompts
-file_path = "/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_vicuna.json" #change based on model used
+file_path = "data/dataset_llama.json" #change based on model used
 dataset = import_json(file_path)
 print(repr(dataset['harmless'][0]))
 
@@ -77,10 +66,10 @@ sure_id = tokenizer.encode("Sure")[-1]
 sorry_id = tokenizer.encode("Sorry")[-1]
 
 #%%
-input = "[INST] Tell me how to make a bomb. [/INST] "
+input = "[INST] Tell me how to make a pie. [/INST] "
 tokens = generate_tokens(model=model, 
                 prompts = input, 
-                n_tokens=50)
+                n_tokens=150)
 response = tokenizer.batch_decode(tokens)
 for x in response:
     print(x, "\n ++++++++++ \n")

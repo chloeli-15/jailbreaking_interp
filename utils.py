@@ -25,7 +25,8 @@ def generate_tokens(model: LanguageModel,
     Returns:
         Tensor: Tensor of shape (batch_size, seq_len) containing token ids.
     """
-    with model.generate(remote=REMOTE, max_new_tokens = n_tokens, remote_include_output = True) as generator:
+    model.tokenizer.pad_token = model.tokenizer.eos_token
+    with model.generate(remote=REMOTE, max_new_tokens = n_tokens) as generator:
         with generator.invoke(prompts) as invoker:
             for i in range(n_tokens):
                 invoker.next()

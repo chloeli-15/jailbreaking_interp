@@ -25,7 +25,7 @@ from matplotlib.pyplot import imshow
 import re
 import random
 from pprint import pprint
-from utils import export_to_txt, import_json
+from utils import export_to_txt, import_json, generate_tokens
 from IPython.display import display, HTML
 from typing import List, Optional
 
@@ -38,11 +38,8 @@ t.set_grad_enabled(False);
 MAIN = __name__ == '__main__'
 # %%
 # Import model
-# model_name = "lmsys/vicuna-13b-v1.5"
-# model_name = "gpt2"
 # model_name = "lmsys/vicuna-7b-v1.3"
 model_name = "meta-llama/Llama-2-7b-chat-hf"
-# model_name = "mistralai/Mistral-7B-Instruct-v0.1"
 
 model = LanguageModel(model_name, device_map='auto')
 tokenizer = model.tokenizer
@@ -62,15 +59,26 @@ REMOTE = False
 
 #%%
 # Prepare prompts
-dataset = import_json("/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_llama.json") #llama
-# dataset = import_json("/root/andy-a6000-backup/users/chloe/jailbreak/data/dataset_vicuna.json") #vicuna
+dataset = import_json("data/dataset_llama.json") #llama
+# dataset = import_json("data/dataset_vicuna.json") #vicuna
 print(repr(dataset['harmless'][0]))
 sure_id = tokenizer.encode("Sure")[-1]
 sorry_id = tokenizer.encode("Sorry")[-1]
 seed = 1
 random.seed(seed)
+
+#%%
+# Generate 
+input = "[INST] Tell me how to make a paper plane. [/INST] "
+tokens = generate_tokens(model=model, 
+                prompts = input, 
+                n_tokens=10)
+response = tokenizer.batch_decode(tokens)
+for x in response:
+    print(x, "\n ++++++++++ \n")
 #%%
 # Activation Patching - RESIDUAL STREAM: harmful -> harmless (sufficient heads for refusal)
+                                        # harmless -> harmless (sufficient heads for refusal)
                                         # harmful_suffix -> harmless (sufficient heads for refusal)
 
 def patch_residual(model: LanguageModel, 
@@ -79,21 +87,9 @@ def patch_residual(model: LanguageModel,
                        answer_token_ids: List[Int], 
                        target_layers: List[int], 
                        target_pos: int,
-                       normalizing_prompts: Optional[List[str]] = None,
                        per_prompt: bool = False) -> Float:
 
     tokenizer.padding_side = "left"
-    if normalizing_prompts is not None:
-        tokens = model.tokenizer(receiver_prompts + source_prompts + normalizing_prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
-        receiver_tokens = tokens[:len(receiver_prompts)]
-        source_tokens = tokens[len(receiver_prompts):len(receiver_prompts)+len(source_prompts)]
-        norm_tokens = tokens[-len(normalizing_prompts):]
-    else:
-        tokens = model.tokenizer(receiver_prompts + source_prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
-        receiver_tokens = tokens[:len(receiver_prompts)]
-        source_tokens = tokens[len(receiver_prompts):]
-        norm_tokens = None
-
     tokens = model.tokenizer(receiver_prompts + source_prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
     receiver_tokens = tokens[:len(receiver_prompts)]
     source_tokens = tokens[len(receiver_prompts):]
@@ -106,7 +102,7 @@ def patch_residual(model: LanguageModel,
     
     with model.forward(remote=REMOTE) as runner:
 
-        # Store residual output per layer for SOURCE prompts
+        # Store residual output per layer for source prompts
         source_resid_dict = {}
         with runner.invoke(source_tokens) as invoker:
             for layer in target_layers:
@@ -116,12 +112,12 @@ def patch_residual(model: LanguageModel,
             logits = model.lm_head.output[:, -1] #[batch, vocab_size]
             source_refusal_score = (logits[:, answer_token_ids[0]] - logits[:, answer_token_ids[1]]).mean().save() #[batch,] -> scalar (averaged over batch)
         
-        # Get receiver refusal score to compare against [RECEIVER]
+        # Get receiver refusal score to compare against
         with runner.invoke(receiver_tokens) as invoker:
             logits = model.lm_head.output[:, -1] #[batch, d_model] at -1 position
             receiver_refusal_score = (logits[:, answer_token_ids[0]] - logits[:, answer_token_ids[1]]).mean().save()
 
-        # Run forward pass on harmful prompts with intervention [RECEIVER]
+        # Run forward pass on receiver prompts with patching intervention 
         intervened_refusal_score = {}
         for layer in target_layers:
             #for pos in range(seq_len+target_pos, seq_len):
@@ -163,7 +159,6 @@ def patch_residual_at_target_pos(model: LanguageModel,
     seq_len = source_tokens.shape[-1]
     print(f"{seq_len=}")
 
-    # Get and store residual output for harmless prompts
     assert len(receiver_prompts) == len(source_prompts)
     
     with model.forward(remote=REMOTE) as runner:
@@ -253,34 +248,11 @@ def get_target_pos_batch(model: LanguageModel,
     print(f"{receiver_target_pos=}")
     return source_target_pos, receiver_target_pos
 #%%
-# Patching "USER: Tell me how to make a"
-receiver_prompts = dataset['harmless']
-source_prompts = dataset['harmful']
-
-source_target_pos, receiver_target_pos = get_target_pos_batch(model, 
-                                                        target_ids=[3148,1207], 
-                                                        receiver_prompts=receiver_prompts, 
-                                                        source_prompts=source_prompts)
-assert len(source_target_pos) == len(receiver_target_pos), f"{len(source_target_pos)=} != {len(receiver_target_pos)=}"
-patch_resid_USER = t.empty((n_layers, len(receiver_target_pos)))
-for layer in range(0, n_layers,2):
-    #for pos in range(target_pos, 0):
-    for i, (source_pos, receiver_pos) in enumerate(zip(source_target_pos, receiver_target_pos)):
-        patch_resid_USER[layer:layer+2, i] = patch_residual_at_target_pos(model=model, 
-                                                        receiver_prompts=receiver_prompts, 
-                                                        source_prompts=source_prompts, 
-                                                        answer_token_ids=[sorry_id, sure_id], 
-                                                        target_layers = [layer, layer+1],
-                                                        source_target_pos = source_pos,
-                                                        receiver_target_pos = receiver_pos,
-                                                        target_pos = i)
-t.save(patch_resid_USER, "/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_harmless_harmful_USER.pt")
-
-
-#%%
-# Patching <obj> to ":" position
+# Experiment: residual stream patching
 # target_pos = -7 #vicuna
 target_pos = -6 #llama, up to <obj>
+receiver_prompts = dataset['harmless']
+source_prompts = dataset['harmful']
 patch_resid = t.empty((n_layers, abs(target_pos)))
 for layer in range(0, n_layers,2):
     for pos in range(target_pos, 0):
@@ -291,9 +263,7 @@ for layer in range(0, n_layers,2):
                                                         target_layers = [layer, layer+1],
                                                         target_pos = pos)
 
-# t.save(patch_resid, "/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_harmful_harmless.pt")
-# print(f"{refusal_score_diff_harmless_harmful.shape=}, 
-# {refusal_score_diff_harmless_harmful=}")
+# t.save(patch_resid, "data/patch_resid_harmful_harmless.pt")
 # refusal_score_diff_suffix_harmful = t.load("/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_suffix_harmful.pt")
 #%%
 target_pos = -1
@@ -321,6 +291,29 @@ print(f"{refusal_score_diff_harmless_harmful.shape=}, {refusal_score_diff_harmle
 
 #t.save(refusal_score_diff_from_harmless, "refusal_score_diff_harmless_harmful.pt")
 #print(f"{refusal_score_diff_from_harmless.shape=}, {refusal_score_diff_from_harmless=}")
+
+
+#%%
+# Experiment: Patching "USER: Tell me how to make a"
+source_target_pos, receiver_target_pos = get_target_pos_batch(model, 
+                                                        target_ids=[3148,1207], 
+                                                        receiver_prompts=receiver_prompts, 
+                                                        source_prompts=source_prompts)
+assert len(source_target_pos) == len(receiver_target_pos), f"{len(source_target_pos)=} != {len(receiver_target_pos)=}"
+patch_resid_USER = t.empty((n_layers, len(receiver_target_pos)))
+for layer in range(0, n_layers,2):
+    #for pos in range(target_pos, 0):
+    for i, (source_pos, receiver_pos) in enumerate(zip(source_target_pos, receiver_target_pos)):
+        patch_resid_USER[layer:layer+2, i] = patch_residual_at_target_pos(model=model, 
+                                                        receiver_prompts=receiver_prompts, 
+                                                        source_prompts=source_prompts, 
+                                                        answer_token_ids=[sorry_id, sure_id], 
+                                                        target_layers = [layer, layer+1],
+                                                        source_target_pos = source_pos,
+                                                        receiver_target_pos = receiver_pos,
+                                                        target_pos = i)
+t.save(patch_resid_USER, "data/patch_resid_harmless_harmful_USER.pt")
+
 
 #%%
 # Plot
