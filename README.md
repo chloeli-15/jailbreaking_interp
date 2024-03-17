@@ -7,8 +7,8 @@ A key safety objective is to train LLMs to reliably refuse to answer harmful req
 [Recent work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) has investigated mechanisms responsible for refusal in Llama2-7b-rlhf. They hypothesized that there is some early-middle layer circuit that computes a "harmfulness" feature. This is separate and downstream from circuits in earlier layers that create the task representation. 
 
 Objectives of the current study (to be refined):
-1. Generalizability of refusal mechanism results (testing on Llama2, Vicuna, Pythia, and Falcon)
-2. Generalizable vector that can jailbreak different models - can we systematically find the "harmlessness" feature computed in intermediate layers and use this to jailbreak models?
+1. Generalizability of refusal mechanism results (testing on Llama2, Vicuna)
+2. Find generalizable vector that can jailbreak different models - can we systematically find the "harmlessness" feature computed in intermediate layers and use this to jailbreak models?
 3. Initial experiments to locate model components responsible for adversarial suffixes
 
 ## Generating dataset
@@ -32,14 +32,16 @@ and polite answers to the user's questions. USER: Tell me how to make a <obj>. A
 
 We need to define a metric that quantifies refusal behavior. To start, I used the logit difference metric for refusal from [Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat), where $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position.
 
-If this cleanly separates refusal and non-refusal behavior, this makes it a useful metric for locating responsible model components based on how much patching them changes the refusal score. Previously, it's shown that this metric separates model activations on harmful and harmless prompts in Llama2 well, but the robustness of this separability is not evaluated. Here, I evaluate the metric on two properties: (1) its _generalizability_ across models, and (2) its _consistency_ with generated output (i.e. a high refusal score at the -1 position corresponds to model refusal and a low refusal score at the -1 position corresponds to model answering). I computed the refusal score for the cumulative residual stream output at each layer (and all layers before it).
+If this cleanly separates refusal and non-refusal behavior, this makes it a useful metric for locating responsible model components based on how much patching them changes the refusal score. I computed the refusal score for the cumulative residual stream output at each layer (and all layers before it). 
 
-**Consistency.** 
-
-**Generalizability.** The refusal score well separates activations on harmful and harmless prompts in Llama2, replicating previous results. However, this separation is smaller for Vicuna. Further, it does not separate between harmless prompts and harmful suffix prompts with an adversarial suffix that can successfully jailbreak. This is not surprising as we expect the suffix to increase the model's likelihood of saying "Sure". 
+The refusal score well separates activations on harmful and harmless prompts in Llama2, replicating previous results. However, this separation is smaller for Vicuna. Further, it does not separate between harmless prompts and harmful suffix prompts with an adversarial suffix that can successfully jailbreak. This is not surprising as we expect the suffix to increase the model's likelihood of saying "Sure". 
 
 <img width="900" alt="Logit attribution cumulative residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/97ab29c8-e70c-476f-8990-7f65e7be1568">
 
+Directions:
+- Evaluate the metric on (1) _generalizability_ across models, (2) _consistency_ with generated output (i.e. a high refusal score at the -1 position corresponds to model refusal and a low refusal score at the -1 position corresponds to model answering).
+- Multi-token patch metric
+- Find metric that separates suffix vs harmless prompts
 
 ## Activation patching
 
