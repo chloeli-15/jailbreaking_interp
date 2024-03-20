@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The focus of this study is to investigate the mechanisms for LLMs refusing harmful prompts and jailbreaking by adversarial suffixes. This builds on [recent work by Andy Arditi and Oscar Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) on refusal in Llama2-7b-rlhf. 
+The focus of this study is to investigate the mechanisms for LLMs refusing harmful prompts and jailbreaking by adversarial suffixes. This builds on [recent work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) by Andy Arditi and Oscar Obeso on refusal in Llama2-7b-rlhf. 
 
 This repository contains code for a series of experiments that find the mechansisms refusal and jailbreaking: `logit_attribution.py` defines a logit difference metric for refusal and finds layers whose residual output directly affects refusal; `activation_patching.py` finds a sparse graph of circuit for refusal using activation patching; `attention_pattern_analysis.py` visualizes attention patterns to interpret heads contributing to refusal. The models involved in these experiments are:
 - Llama2-7B-chat
