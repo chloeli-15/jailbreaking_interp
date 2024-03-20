@@ -16,7 +16,9 @@ To define a metric that quantifies refusal, I use the logit difference between t
 
 This refusal score can be decomposed into a linear sum of the contribution of each layer's residual stream using direct logit attribution methods. I computed the refusal score for the cumulative residual stream output of each layer (and all layers before it). For both models, computational outputs relevant for refusal start to be present in the residual stream around middle layers 13-17, and plateaus around layers 26-28. 
 
-<img width="900" alt="Logit attribution cumulative residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/97ab29c8-e70c-476f-8990-7f65e7be1568">
+<img width="800" alt="Logit attribution cumulative residual, Vicuna" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/97ab29c8-e70c-476f-8990-7f65e7be1568">
+
+<img width="430" alt="Logit attribution cumulative residual, Llama2" src="https://github.com/chloeli-15/jailbreaking_interp/blob/main/figs/logit_diff_llama_SorrySure.png?raw=true">
 
 
 ### Activation patching
