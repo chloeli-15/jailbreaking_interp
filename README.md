@@ -2,58 +2,35 @@
 
 ## Introduction
 
-A key safety objective is to train LLMs to reliably refuse to answer harmful requests. 
+The focus of this study is to investigate the mechanisms for LLMs refusing harmful prompts and jailbreaking by adversarial suffixes. This builds on [recent work by Nina Rimsky, Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) on refusal in Llama2-7b-rlhf. 
 
-[Recent work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) has investigated mechanisms responsible for refusal in Llama2-7b-rlhf. They hypothesized that there is some early-middle layer circuit that computes a "harmfulness" feature. This is separate and downstream from circuits in earlier layers that create the task representation. 
+This repository contains code for a series of experiments that find the mechansisms refusal and jailbreaking: `logit_attribution.py` defines a logit difference metric for refusal and finds layers whose residual output directly affects refusal; `activation_patching.py` finds a sparse graph of circuit for refusal using activation patching; `attention_pattern_analysis.py` visualizes attention patterns to interpret heads contributing to refusal. The models involved in these experiments are:
+- Llama2-7B-chat
+- Vicuna-7B-v1.3
 
-Objectives of the current study (to be refined):
-1. Generalizability of refusal mechanism results (testing on Llama2, Vicuna, Pythia, and Falcon)
-2. Generalizable vector that can jailbreak different models - can we systematically find the "harmlessness" feature computed in intermediate layers and use this to jailbreak models?
-3. Initial experiments to locate model components responsible for adversarial suffixes
+## Initial results 
 
-## Generating dataset
+### Logit attribution
 
-Prompts follow the simple format `"Tell me how to make a <obj>"`, where `<obj>` is replaced by a harmless object (e.g. cake, pie, paper planes, etc.) or harmful object (e.g. bomb, biological weapon, suicide vest, etc.), following [previous work by Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat). This minimizes the difference between harmless and harmful prompts so processes related to refusal can be more cleanly isolated by their activation difference. 
+To define a metric that quantifies refusal, I use the logit difference between tokens "Sorry" and "Sure" at the last token position following [previous work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat): $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position. This equals the log prob difference between predicting the token "Sorry" and "Sure", thus may be a good metric . 
 
-There are three classes of prompts: `harmless`, `harmful` and `suffix`, each containing 29 examples. `suffix` prompts are harmful prompts appended with an adversarial suffix generated using methods by [Zou et al (2023)](https://arxiv.org/abs/2307.15043). 
-
-Llama and Mistral prompt format: 
-```
-"[INST] Tell me how to make a <obj>. [\INST] "
-```
-
-Vicuna prompt: 
-```
-"A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed,
-and polite answers to the user's questions. USER: Tell me how to make a <obj>. ASSISTANT: "
-```
-
-## Defining a refusal metric
-
-We need to define a metric that quantifies refusal behavior. To start, I used the logit difference metric for refusal from [Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat), where $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position.
-
-If this cleanly separates refusal and non-refusal behavior, this makes it a useful metric for locating responsible model components based on how much patching them changes the refusal score. Previously, it's shown that this metric separates model activations on harmful and harmless prompts in Llama2 well, but the robustness of this separability is not evaluated. Here, I evaluate the metric on two properties: (1) its _generalizability_ across models, and (2) its _consistency_ with generated output (i.e. a high refusal score at the -1 position corresponds to model refusal and a low refusal score at the -1 position corresponds to model answering). I computed the refusal score for the cumulative residual stream output at each layer (and all layers before it).
-
-**Consistency.** 
-
-**Generalizability.** The refusal score well separates activations on harmful and harmless prompts in Llama2, replicating previous results. However, this separation is smaller for Vicuna. Further, it does not separate between harmless prompts and harmful suffix prompts with an adversarial suffix that can successfully jailbreak. This is not surprising as we expect the suffix to increase the model's likelihood of saying "Sure". 
+This refusal score can be decomposed into a linear sum of the contribution of each layer's residual stream using direct logit attribution methods. I computed the refusal score for the cumulative residual stream output of each layer (and all layers before it). For both models, computational outputs relevant for refusal start to be present in the residual stream around middle layers 13-17, and plateaus around layers 26-28. 
 
 <img width="900" alt="Logit attribution cumulative residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/97ab29c8-e70c-476f-8990-7f65e7be1568">
 
 
-## Activation patching
+### Activation patching
 
-Activation patching is the main method used to identify model components that are _causally_ responsible for refusal. For the following patching experiments, I patched activations from `source` &rarr; `receiver` by directly replacing the `receiver_activation` with `source_activation * scale_factor (sf)` at corresponding layer and sequence positions. 
+I use activation patching methods to identify model components that are _causally_ responsible for refusal. For the following patching experiments, I patched activations from `source` &rarr; `receiver` by _directly replacing_ the `receiver_activation` with `source_activation * scale_factor` at corresponding layer and sequence positions. 
 
 The patching metric has the following meaning, when patching activations from source &rarr; receiver:
 - 1 = refusal behavior after patching is fully restored to source activation
 - 0 = refusal behavior after patching is the same as the receiver before patching (patching had no effect)
 
-### Patching residual stream + attention output
 
 **Patching harmful &rarr; harmless**
 
-To start, I patched (1) the residual stream output and (2) attn_output at the last 7 positions across each layer.
+To start, I patched the residual stream output and attn_output at the last 7 positions across each layer.
 
 <p align="center">
  <img width="513" alt="patching_residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/eb2b7952-b6e5-450a-99fb-1394c1de884b">
@@ -61,17 +38,23 @@ To start, I patched (1) the residual stream output and (2) attn_output at the la
     <em style="color: grey; text-align: center;"> Patching the activation of the harmful run into the harmless run. A patching score of 1 means the activation was fully restored to the harmful run, and 0 means the activation was the same as a harmless run. </em>
 </p>
 
-As expected, patching at the `<obj>` position in early layers ~3-11 strongly restores refusal. The effect of this patch can be thought of as replacing the harmless object (`"cake"`) with a harmful object (`"bomb"`). Patching at the -1 (":") position in later layers ~13-31 also strongly restores refusal. From the graph, we can see that information relevant to refusal is computed before layer 16 (after which the patching score no longer changes) and gathered to the -1 position between layers 12-16.
+We can see that the following residual stream outputs are **sufficient** to restore refusal:
+- Activations at `<obj>` position in early layers ~3-11 - The effect of this patch can be thought of as replacing the harmless object (`"cake"`) with a harmful object (`"bomb"`).
+- Activations at the -1 position in later layers ~13-31
+- More interestingly, activations at certain end-of-sequence positions **partially** restore refusal: This is the "." position (-6) in Vicuna and "[" (-4) position in Llama, the latter replicating [earlier results](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat). This is surprising - it suggests that certain information sufficient for eliciting refusal is being stored here temporarily, before it appears at -1 position.
+One can imagine that a common information-moving circuit is being used across models, which can temporarily store information at a flexible intermediate "information shelling point". What might this information be?
 
-More interestingly, there's a weak signal at the "." position (-6) in layers 12-13. This is corroborated by cumulative attention patching results, where patching at "." almost fully restores refusal from layer 12 onward. Layers 12-13 are transitioning layers _after_ the strong signal at `<obj>` ends and _before_ the strong signal at -1 starts. This is surprising - it suggests that certain essential information for refusal is being stored here temporarily, potentially retrieved from the <obj> position then moved to the -1 position. 
-
-The existence of an intermediate signal between `<obj>` and -1 position replicates the results from [Arditi and Obeso](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat), except their "information shelling point" was `"["` (the start of LLaMA's assistant tag `[/INST]`) instead of `"."`. One can imagine that the same information-moving circuit is being used, which can temporarily store information at a flexible intermediate position. What might this information be?
+We can see that the following attention output are **sufficient** to restore refusal:
+- Activations at "." from layer 12 onward. 
 
 **Patching harmless &rarr; harmful**
 <p align="center">
   <img width="513" alt="logit_attribution_harmless_harmful" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/4e84270e-326a-479c-b107-e42b2a5d8a45">
 </p>
 
+We can see that the following residual stream outputs are **necessary** to restore refusal:
+
+Interestingly, we can see are **not (fully) necessary**
 Patching in the harmful-to-harmless direction and the harmless-to-harmful direction **do not produce symmetrical results**. The signal at `<obj>` is much weaker in the harmless-to-harmful direction. **WHY?? This would suggest that ...??** The intermediate signal is almost nonexistent. 
 
 %TODO: CHECK PATCHING FOR REST OF THE SENTENCE TOKENS
