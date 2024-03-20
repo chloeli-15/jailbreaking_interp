@@ -16,6 +16,7 @@ import einops
 import sys
 import json
 import nnsight
+import transformers
 from nnsight import LanguageModel
 from nnsight.intervention import InterventionProxy
 import matplotlib.pyplot as plt
@@ -38,8 +39,9 @@ MAIN = __name__ == '__main__'
 # Import model
 # model_name = "lmsys/vicuna-7b-v1.3"
 model_name = "meta-llama/Llama-2-7b-chat-hf"
-t.cuda.amp.autocast(enabled=False)
-model = LanguageModel(model_name, device_map='auto')
+# tokenizer = LlamaTokenizer.from_pretrained(model_name)
+# model = LlamaForCausalLM.from_pretrained(model_name).to(device)
+model = LanguageModel(model_name, device_map="cuda:0")
 tokenizer = model.tokenizer
 
 n_heads = model.config.num_attention_heads
@@ -98,10 +100,10 @@ def patch_residual(model: LanguageModel,
     assert len(receiver_prompts) == len(source_prompts)
     
     with model.trace() as tracer:
-
         # Clean run (source)
         source_resid_dict = {}
         with tracer.invoke(source_tokens) as invoker:
+            print(model.device)
             for layer in target_layers:
                 #for pos in range(seq_len+target_pos, seq_len):
                 assert seq_len == model.model.layers[layer].output[0].shape[1], f"{seq_len=} != {model.model.layers[layer].output[0].shape[1]=}, {model.model.layers[layer].output[0].shape=}"
@@ -119,6 +121,7 @@ def patch_residual(model: LanguageModel,
         for layer in target_layers:
             #for pos in range(seq_len+target_pos, seq_len):
             with tracer.invoke(receiver_tokens) as invoker:
+                model.to(device)
                 model.model.layers[layer].output[0][:, target_pos] = source_resid_dict[(layer, target_pos)]
                 logits = model.lm_head.output[:, -1]
                 intervened_refusal_score[(layer, target_pos)] = (logits[:, answer_token_ids[0]] - logits[:, answer_token_ids[1]]).save() #[batch,]
@@ -136,6 +139,34 @@ def patch_residual(model: LanguageModel,
     print(f"{refusal_score_diff.shape=}")
     return refusal_score_diff
 
+#%%
+prompt = "Hi world."
+tokens = tokenizer(prompt, return_tensors="pt")["input_ids"].to(device)
+with model.trace() as tracer:
+    with tracer.invoke(tokens) as invoker:
+        model.to(device)
+        logits = model.lm_head.output
+#%%
+# Experiment: residual stream patching
+# target_pos = -7 #vicuna
+target_pos = -6 #llama, up to <obj>
+receiver_prompts = dataset['harmful']
+source_prompts = dataset['harmless']
+patch_resid = t.empty((n_layers, abs(target_pos)))
+for layer in range(0, n_layers,2):
+    for pos in range(target_pos, 0):
+        with t.cuda.amp.autocast(enabled=False):
+            patch_resid[layer:layer+2, pos+abs(target_pos)] = patch_residual(model=model, 
+                                                        receiver_prompts=receiver_prompts, 
+                                                        source_prompts=source_prompts, 
+                                                        answer_token_ids=[sorry_id, sure_id], 
+                                                        target_layers = [layer, layer+1],
+                                                        target_pos = pos)
+
+# t.save(patch_resid, "data/patch_resid_harmful_harmless.pt")
+# refusal_score_diff_suffix_harmful = t.load("/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_suffix_harmful.pt")
+
+#%%
 def patch_residual_at_target_pos(model: LanguageModel, 
                        receiver_prompts: List[str], 
                        source_prompts: List[str], 
@@ -163,6 +194,7 @@ def patch_residual_at_target_pos(model: LanguageModel,
         # Store residual output per layer for SOURCE prompts
         source_resid_dict = {}
         with runner.invoke(source_tokens) as invoker:
+            
             for layer in target_layers:
                 #for pos in range(seq_len+target_pos, seq_len):
                 assert seq_len == model.model.layers[layer].output[0].shape[1], f"{seq_len=} != {model.model.layers[layer].output[0].shape[1]=}, {model.model.layers[layer].output[0].shape=}"
@@ -196,7 +228,6 @@ def patch_residual_at_target_pos(model: LanguageModel,
     print("Score:", refusal_score_diff)
     print(f"{refusal_score_diff.shape=}")
     return refusal_score_diff
-
 def get_target_pos_batch(model: LanguageModel,
                    target_ids: List[int],
                    receiver_prompts: List[str],
@@ -244,53 +275,6 @@ def get_target_pos_batch(model: LanguageModel,
     assert all(len(pos) == len(receiver_target_pos[0]) for pos in receiver_target_pos[1:]), "You don't have the same number of prompts for each target position"
     print(f"{receiver_target_pos=}")
     return source_target_pos, receiver_target_pos
-#%%
-# Experiment: residual stream patching
-# target_pos = -7 #vicuna
-target_pos = -6 #llama, up to <obj>
-receiver_prompts = dataset['harmful']
-source_prompts = dataset['harmless']
-patch_resid = t.empty((n_layers, abs(target_pos)))
-for layer in range(0, n_layers,2):
-    for pos in range(target_pos, 0):
-        patch_resid[layer:layer+2, pos+abs(target_pos)] = patch_residual(model=model, 
-                                                        receiver_prompts=receiver_prompts, 
-                                                        source_prompts=source_prompts, 
-                                                        answer_token_ids=[sorry_id, sure_id], 
-                                                        target_layers = [layer, layer+1],
-                                                        target_pos = pos)
-
-# t.save(patch_resid, "data/patch_resid_harmful_harmless.pt")
-# refusal_score_diff_suffix_harmful = t.load("/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_suffix_harmful.pt")
-#%%
-target_pos = -1
-refusal_score_diff_suffix_harmful = t.empty((n_layers, abs(target_pos)))
-for layer in range(0, n_layers, 2):
-    refusal_score_diff_suffix_harmful[layer:layer+2] = patch_residual(model=model, 
-                                                      receiver_prompts=dataset['harmful'], 
-                                                      source_prompts=dataset['suffix'], 
-                                                      answer_token_ids=[sorry_id, sure_id], 
-                                                      target_layers = [layer, layer + 1],
-                                                      target_pos = target_pos)
-print(f"{refusal_score_diff_suffix_harmful.shape=}, {refusal_score_diff_suffix_harmful=}")
-#%%
-target_pos = -1
-refusal_score_diff_harmless_harmful = t.empty((n_layers, abs(target_pos)))
-for layer in range(0, n_layers, 2):
-    refusal_score_diff_harmless_harmful[layer:layer+2] = patch_residual(model=model, 
-                                                      receiver_prompts=dataset['harmful'], 
-                                                      source_prompts=dataset['harmless'], 
-                                                      #normalizing_prompts=dataset['harmless'],
-                                                      answer_token_ids=[sorry_id, sure_id], 
-                                                      target_layers = [layer, layer + 1],
-                                                      target_pos = target_pos)
-print(f"{refusal_score_diff_harmless_harmful.shape=}, {refusal_score_diff_harmless_harmful=}")
-
-#t.save(refusal_score_diff_from_harmless, "refusal_score_diff_harmless_harmful.pt")
-#print(f"{refusal_score_diff_from_harmless.shape=}, {refusal_score_diff_from_harmless=}")
-
-
-#%%
 # Experiment: Patching "USER: Tell me how to make a"
 source_target_pos, receiver_target_pos = get_target_pos_batch(model, 
                                                         target_ids=[3148,1207], 
