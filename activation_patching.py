@@ -41,7 +41,7 @@ MAIN = __name__ == '__main__'
 model_name = "meta-llama/Llama-2-7b-chat-hf"
 # tokenizer = LlamaTokenizer.from_pretrained(model_name)
 # model = LlamaForCausalLM.from_pretrained(model_name).to(device)
-model = LanguageModel(model_name, device_map="cuda:0")
+model = LanguageModel(model_name, device_map="cuda:0", dispatch=True)
 tokenizer = model.tokenizer
 
 n_heads = model.config.num_attention_heads
@@ -77,9 +77,7 @@ response = tokenizer.batch_decode(tokens)
 for x in response:
     print(x, "\n ++++++++++ \n")
 #%%
-# Activation Patching - RESIDUAL STREAM: harmful -> harmless (sufficient heads for refusal)
-                                        # harmless -> harmless (sufficient heads for refusal)
-                                        # harmful_suffix -> harmless (sufficient heads for refusal)
+# Patching Residual Stream
 
 def patch_residual(model: LanguageModel, 
                        receiver_prompts: List[str], 
@@ -89,6 +87,7 @@ def patch_residual(model: LanguageModel,
                        target_pos: int,
                        per_prompt: bool = False) -> Float:
 
+    # Padding 
     tokenizer.padding_side = "left"
     tokens = model.tokenizer(receiver_prompts + source_prompts, return_tensors='pt', padding=True)['input_ids'].to(device)
     receiver_tokens = tokens[:len(receiver_prompts)]
@@ -103,7 +102,6 @@ def patch_residual(model: LanguageModel,
         # Clean run (source)
         source_resid_dict = {}
         with tracer.invoke(source_tokens) as invoker:
-            print(model.device)
             for layer in target_layers:
                 #for pos in range(seq_len+target_pos, seq_len):
                 assert seq_len == model.model.layers[layer].output[0].shape[1], f"{seq_len=} != {model.model.layers[layer].output[0].shape[1]=}, {model.model.layers[layer].output[0].shape=}"
@@ -111,12 +109,12 @@ def patch_residual(model: LanguageModel,
             logits = model.lm_head.output[:, -1] #[batch, vocab_size]
             source_refusal_score = (logits[:, answer_token_ids[0]] - logits[:, answer_token_ids[1]]).mean().save() #[batch,] -> scalar (averaged over batch)
         
-        # Corrupted
+        # Corrupted run (receiver)
         with tracer.invoke(receiver_tokens) as invoker:
             logits = model.lm_head.output[:, -1] #[batch, d_model] at -1 position
             receiver_refusal_score = (logits[:, answer_token_ids[0]] - logits[:, answer_token_ids[1]]).mean().save()
 
-        # Run forward pass on receiver prompts with patching intervention 
+        # Apply patch from clean to corrumpt run
         intervened_refusal_score = {}
         for layer in target_layers:
             #for pos in range(seq_len+target_pos, seq_len):
@@ -139,31 +137,24 @@ def patch_residual(model: LanguageModel,
     print(f"{refusal_score_diff.shape=}")
     return refusal_score_diff
 
-#%%
-prompt = "Hi world."
-tokens = tokenizer(prompt, return_tensors="pt")["input_ids"].to(device)
-with model.trace() as tracer:
-    with tracer.invoke(tokens) as invoker:
-        model.to(device)
-        logits = model.lm_head.output
+
 #%%
 # Experiment: residual stream patching
 # target_pos = -7 #vicuna
-target_pos = -6 #llama, up to <obj>
-receiver_prompts = dataset['harmful']
-source_prompts = dataset['harmless']
+target_pos = -7 #llama, up to <obj>
+receiver_prompts = dataset['harmless']
+source_prompts = dataset['harmful']
 patch_resid = t.empty((n_layers, abs(target_pos)))
 for layer in range(0, n_layers,2):
     for pos in range(target_pos, 0):
-        with t.cuda.amp.autocast(enabled=False):
-            patch_resid[layer:layer+2, pos+abs(target_pos)] = patch_residual(model=model, 
+        patch_resid[layer:layer+2, pos+abs(target_pos)] = patch_residual(model=model, 
                                                         receiver_prompts=receiver_prompts, 
                                                         source_prompts=source_prompts, 
                                                         answer_token_ids=[sorry_id, sure_id], 
                                                         target_layers = [layer, layer+1],
                                                         target_pos = pos)
 
-# t.save(patch_resid, "data/patch_resid_harmful_harmless.pt")
+t.save(patch_resid, "results/patch_resid_LTF_llama2.pt")
 # refusal_score_diff_suffix_harmful = t.load("/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_suffix_harmful.pt")
 
 #%%
@@ -189,7 +180,7 @@ def patch_residual_at_target_pos(model: LanguageModel,
 
     assert len(receiver_prompts) == len(source_prompts)
     
-    with model.forward(remote=REMOTE) as runner:
+    with model.forward() as runner:
 
         # Store residual output per layer for SOURCE prompts
         source_resid_dict = {}
@@ -302,7 +293,7 @@ receiver:str = "harmless"
 source:str = "harmful"
 # target_pos = 9 #USER, vicuna
 # target_pos = -7 #<obj>, vicuna
-target_pos = -6 #<obj>, llama
+target_pos = -7 #<obj>, llama
 
 score = patch_resid
 tokens = model.tokenizer(dataset['harmful'] + dataset['suffix'], return_tensors='pt', padding=True)['input_ids'].to(device)
@@ -327,7 +318,7 @@ plt.imshow(
     # width = 700,
     # height = 1000
     )
-plt.title(f"Activation patching of residual stream, {source} \u2192 {receiver}")
+plt.title(f"Llama2: Activation patching of residual stream, {source} \u2192 {receiver}")
 plt.xlabel("Positions")
 plt.ylabel("Layers")
 plt.xticks(range(len(position_axis)), position_axis)
@@ -339,7 +330,7 @@ plt.subplots_adjust(bottom=0.2, top=0.9, left=0.1, right=0.85)
 plt.show()
 
 # %%
-# Activation Patching - ATTENTION HEADS: harmful -> harmless (sufficient heads for refusal)
+# Patching Single Attention Heads
 def patch_attention_head(model: LanguageModel, 
                         receiver_prompts: List[str], 
                         source_prompts: List[str], 
@@ -371,7 +362,7 @@ def patch_attention_head(model: LanguageModel,
     assert len(receiver_prompts) == len(source_prompts)
     print(f"{len(receiver_prompts)=}")
     
-    with model.forward(remote=REMOTE) as runner:
+    with model.forward() as runner:
 
         # Run forward pass and store each attention head output 
         attn_dict = {} # [d_head]
@@ -435,7 +426,7 @@ for layer in target_layers:
                                                         target_pos=target_pos,
                                                         target_heads=range(head, head+2))
         print(patch_attn_head)
-t.save(patch_attn_head, "results/patch_attn_head_llama_harmful_harmless_pos4.pt")      
+# t.save(patch_attn_head, "results/patch_attn_head_llama_harmful_harmless_pos4.pt")      
 
 #%%
 # Plot
@@ -466,14 +457,10 @@ plt.yticks(list(range(start_layer, end_layer)), list(range(start_layer, end_laye
 plt.tight_layout()
 plt.colorbar()
 fig.patch.set_facecolor('white')
-#plt.text(5, 36, 'Patching individual heads at a single layer. The value is refusal score difference caused by patching, normalized by refusal score difference between harmless and harmful prompts: (RS_intervened - RS_harmless)/(RS_harmful_RS_harmless). 1 = perfect intervention.', fontsize=12, ha='center')
-#plt.savefig('/home/ubuntu/ARENA_3.0/representation-engineering/examples/harmless_harmful/figs/residual_patching_harmfulsuf_harmful_normalized', bbox_inches='tight')
 plt.show()
 
-# %%
-
 #%%
-# Activation patching - attn_output cumulative
+# Patching Cumulative Attention Output 
 def patch_attn_out_cumulative(model: LanguageModel, 
                         receiver_prompts: List[str], 
                         source_prompts: List[str], 
@@ -496,7 +483,7 @@ def patch_attn_out_cumulative(model: LanguageModel,
 
     # Get and store residual output for harmless prompts
     assert len(receiver_prompts) == len(source_prompts)    
-    with model.forward(remote=REMOTE) as runner:
+    with model.forward() as runner:
 
         # Run forward pass and store each attention head output 
         attn_dict = {} # [d_head]
@@ -610,7 +597,7 @@ def generate_tokens(model: LanguageModel,
     #     'top_k': 50,
     #     'top_p': 0.95,
     # }
-    with model.generate(remote=REMOTE, max_new_tokens = n_tokens, remote_include_output = True) as generator:
+    with model.generate(, max_new_tokens = n_tokens, remote_include_output = True) as generator:
         with generator.invoke(prompts) as invoker:
 
             for i in range(n_tokens):
@@ -701,7 +688,7 @@ def generate_with_patch(model: LanguageModel,
     output = ""
     refusal_score = []
     patch_output = {}
-    with model.forward(remote=REMOTE) as runner:
+    with model.forward() as runner:
         with runner.invoke(patch_prompts) as invoker:
             if patch_type == "attn_out":
                 for target_layer in target_layers:
@@ -719,7 +706,7 @@ def generate_with_patch(model: LanguageModel,
                     for target_pos in target_positions:
                         patch_output[(target_layer, target_pos)] = model.model.layers[target_layer].output[0][:, target_pos].mean(0).save()
 
-    with model.generate(remote=REMOTE, max_new_tokens = n_tokens, remote_include_output = True) as generator:
+    with model.generate(, max_new_tokens = n_tokens, remote_include_output = True) as generator:
         with generator.invoke(prompt) as invoker:
             if patch_type == "attn_out":
                 for target_layer in target_layers:

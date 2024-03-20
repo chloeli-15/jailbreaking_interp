@@ -5,21 +5,14 @@ ipython.run_line_magic("load_ext", "autoreload")
 ipython.run_line_magic("autoreload", "2")
 from pathlib import Path
 from typing import Callable, List, Literal, Optional, Tuple, Union
-import numpy as np
 import plotly.express as px
 import torch as t
-import torch.nn.functional as F
 from torch import Tensor
 from IPython.display import display
 from jaxtyping import Float, Int
-from rich import print as rprint
-from rich.table import Table
-import einops
-import os
 import sys
 from IPython.display import clear_output
 from collections import defaultdict
-import json
 import nnsight
 from nnsight import LanguageModel
 from nnsight.intervention import InterventionProxy
@@ -36,11 +29,11 @@ t.set_grad_enabled(False);
 MAIN = __name__ == '__main__'
 # %%
 # Import model
-# model_name = "lmsys/vicuna-7b-v1.3"
-model_name = "meta-llama/Llama-2-7b-chat-hf"
+model_name = "lmsys/vicuna-7b-v1.3"
+# model_name = "meta-llama/Llama-2-7b-chat-hf"
 # model_name = "Qwen/Qwen-7B-Chat"
 
-model = LanguageModel(model_name, device_map='auto', trust_remote_code=True)
+model = LanguageModel(model_name, device_map='auto', dispatch=True)
 tokenizer = model.tokenizer
 
 n_heads = model.config.num_attention_heads
@@ -58,7 +51,7 @@ REMOTE = False
 
 #%%
 # Prepare prompts
-file_path = "data/dataset_llama.json" #change based on model used
+file_path = "data/dataset_vicuna.json" #change based on model used
 dataset = import_json(file_path)
 print(repr(dataset['harmless'][0]))
 
@@ -66,19 +59,11 @@ sure_id = tokenizer.encode("Sure")[-1]
 sorry_id = tokenizer.encode("Sorry")[-1]
 
 #%%
-input = "[INST] Tell me how to make a pie. [/INST] "
-tokens = generate_tokens(model=model, 
-                prompts = input, 
-                n_tokens=150)
-response = tokenizer.batch_decode(tokens)
-for x in response:
-    print(x, "\n ++++++++++ \n")
-#%%
 # Direct Logit Attribution
 def get_residual_logit_diff(model: LanguageModel, 
                             prompts: List[str], 
                             answer_token_ids: List[Int], 
-                            per_prompt: bool = False) -> Float:
+                            per_prompt: bool = True) -> Float:
     """Compute the difference between the logit of the two answer tokens.
     Args:
         logits (Tensor): Tensor of shape (batch_size, seq_len, vocab_size).
@@ -86,12 +71,12 @@ def get_residual_logit_diff(model: LanguageModel,
     Returns:
         Float: Difference between the logit of the two answer tokens.
     """
-    with model.forward(remote=REMOTE) as runner:
-        with runner.invoke(prompts) as invoker:
+    with model.trace() as tracer:
+        with tracer.invoke(prompts) as invoker:
             residual_values = []
             for layer in range(n_layers):
                 # Get accumulative output
-                residual_values.append(model.model.layers[layer].output[0][:, -1]) #[batch, seq, d_model] -> [batch, d_model]
+                residual_values.append(model.model.layers[layer].output[0][:, -1]) #[batch, seq, d_model]
             
             batch_size = len(prompts)
             print("Batch size: ", batch_size, "Prompts:", prompts)
@@ -113,7 +98,7 @@ def get_residual_logit_diff(model: LanguageModel,
             # Calculate predicted token
             logits_correct = model.lm_head.output[:, -1] #[batch, seq, vocab_size] -> [batch, vocab_size]
             predicted_token_id = t.argmax(logits_correct, dim=-1).save() #[batch, vocab_size] -> [batch,]
-            assert predicted_token_id.shape == (batch_size,), f"{predicted_token_id.shape=}, {batch_size=}"
+            # assert predicted_token_id.shape == (batch_size,), f"{predicted_token_id.shape=}, {batch_size=}"
 
     print(predicted_token_id.value)
     predicted_words = [tokenizer.decode(token_id.item()) for token_id in predicted_token_id.value]
@@ -121,21 +106,17 @@ def get_residual_logit_diff(model: LanguageModel,
         return logit_diff.value, predicted_words #[components, batch]
     else:
         return logit_diff.value.mean(-1), predicted_words #[components,]
-
 #%%
 # Get logit difference for harmless and harmful prompts
 harmless_logit_diff, harmless_predicted_words = get_residual_logit_diff(model=model, 
                                                                         prompts=dataset['harmless'], 
-                                                                        answer_token_ids=[sorry_id, sure_id], 
-                                                                        per_prompt=True) #[components = 40 layers, batch = 36 prompts]
+                                                                        answer_token_ids=[sorry_id, sure_id]) 
 harmful_logit_diff, harmful_predicted_words = get_residual_logit_diff(model=model, 
                                                                       prompts=dataset['harmful'], 
-                                                                      answer_token_ids=[sorry_id, sure_id],
-                                                                      per_prompt=True)
+                                                                      answer_token_ids=[sorry_id, sure_id])
 suffix_logit_diff, suffix_predicted_words = get_residual_logit_diff(model=model, 
                                                                               prompts=dataset['suffix'], 
-                                                                              answer_token_ids=[sorry_id, sure_id], 
-                                                                              per_prompt=True)
+                                                                              answer_token_ids=[sorry_id, sure_id])
 
 # harmless_logit_diff, harmless_predicted_words = get_residual_logit_diff(model=model, prompts=["sorry sorry sorry sorry"], answer_token_ids=[sorry_id, sure_id], per_prompt=True) #[components = 40 layers, batch = 36 prompts]
 
@@ -146,7 +127,8 @@ print("Suffix predicted words:", suffix_predicted_words)
 # %%
 # Plotting
 residual_axis = [f"{layer}_layer_post" for layer in range(1, n_layers+1)]
-pattern = re.compile(r"\[INST\] Tell me how to make (an|a)?\s?((\w+\s?)+)\. \[/INST\]")
+# pattern = re.compile(r"\[INST\] Tell me how to make (an|a)?\s?((\w+\s?)+)\. \[/INST\]") #llama
+pattern = re.compile(r"A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: Tell me how to make (an|a)?\s?((\w+\s?)+)\. ASSISTANT:")
 harmless_labels = [match.group(2) for statement in dataset['harmless'] for match in [pattern.match(statement)] if match]
 harmful_labels = [match.group(2) for statement in dataset['harmful'] for match in [pattern.match(statement)] if match]
 harmful_suf_labels = [f"{match.group(2)} + suffix" for statement in dataset['harmful'] for match in [pattern.match(statement)] if match]
@@ -171,9 +153,9 @@ for prompt in range(harmful_logit_diff.shape[-1]):
     assert harmful_logit_diff_cpu.shape[-1] == len(harmful_labels)
     plt.plot(harmful_logit_diff_cpu[:, prompt], color='red', label=harmful_labels[prompt])
 
-# for prompt in range(suffix_logit_diff.shape[-1]):
-#     assert harmful_suf_logit_diff_cpu.shape[-1] == len(harmful_labels)
-#     plt.plot(harmful_suf_logit_diff_cpu[:, prompt], color='green', label=harmful_suf_labels[prompt])
+for prompt in range(suffix_logit_diff.shape[-1]):
+    assert harmful_suf_logit_diff_cpu.shape[-1] == len(harmful_labels)
+    plt.plot(harmful_suf_logit_diff_cpu[:, prompt], color='green', label=harmful_suf_labels[prompt])
 
 # # Average
 # plt.plot(harmless_logit_diff_cpu, color='blue',label="harmess average")
@@ -182,10 +164,9 @@ for prompt in range(harmful_logit_diff.shape[-1]):
 
 
 plt.ylabel('Refusal score')
-plt.title('Mistral-7B: Refusal attribution, accumulated residual stream output at pos -1')
+plt.title('Vicuna-7B: Refusal attribution, accumulated residual stream output at pos -1')
 plt.xticks(range(len(residual_axis)), residual_axis, rotation=-90)
-plt.legend(bbox_to_anchor=(0.5, -1.25), loc = "lower center", ncol = 3)
-# plt.savefig('/home/ubuntu/ARENA_3.0/representation-engineering/examples/harmless_harmful/figs/logit_diff_resid.png')
+plt.legend(bbox_to_anchor=(0.5, -1.65), loc = "lower center", ncol = 3)
 plt.show()
 
 # %%
@@ -193,8 +174,8 @@ plt.show()
 def get_residual_logits(model: LanguageModel, 
                         prompts: List[str], 
                         chunk_size: int = 1000):
-    with model.forward(remote=REMOTE) as runner:
-        with runner.invoke(prompts) as invoker:
+    with model.trace() as tracer:
+        with tracer.invoke(prompts) as invoker:
             # Get residual stream output for each layer
             residual_values = []
             for layer in range(n_layers):
@@ -240,4 +221,13 @@ compare_logits(model,
                prompt_A=dataset['harmless'], 
                prompt_B=dataset['suffix']) 
 
+
 #%%
+input = "[INST] Tell me how to make a pie. [/INST] "
+tokens = generate_tokens(model=model, 
+                prompts = input, 
+                n_tokens=2,
+                REMOTE=REMOTE)
+response = tokenizer.batch_decode(tokens)
+for x in response:
+    print(x, "\n ++++++++++ \n")
