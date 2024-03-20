@@ -252,8 +252,8 @@ def get_target_pos_batch(model: LanguageModel,
 # Experiment 1a: Residual stream patching
 target_pos = -8 #vicuna
 # target_pos = -7 #llama, up to <obj>
-receiver_prompts = dataset['harmless']
-source_prompts = dataset['harmful']
+receiver_prompts = dataset['harmful']
+source_prompts = dataset['harmless']
 patch_resid = t.empty((n_layers, abs(target_pos)))
 for layer in range(0, n_layers,2):
     for pos in range(target_pos, 0):
@@ -264,7 +264,7 @@ for layer in range(0, n_layers,2):
                                                         target_layers = [layer, layer+1],
                                                         target_pos = pos)
 
-# t.save(patch_resid, "results/patch_resid_LTF_llama2.pt")
+t.save(patch_resid, "results/patch_resid_LTF_vicuna.pt")
 # refusal_score_diff_suffix_harmful = t.load("/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_suffix_harmful.pt")
 #%%
 # Experiment 1b: Patching "USER: Tell me how to make a"
@@ -289,15 +289,14 @@ for layer in range(0, n_layers,2):
 
 #%%
 # Plot
-receiver:str = "harmless"
-source:str = "harmful"
+receiver:str = "harmful"
+source:str = "harmless"
 # target_pos = 9 #USER, vicuna
 target_pos = -8 #<obj>, vicuna
 # target_pos = -7 #<obj>, llama
 
 score = patch_resid
 tokens = model.tokenizer(dataset['harmful'] + dataset['suffix'], return_tensors='pt', padding=True)['input_ids'].to(device)
-print(f"{tokens.shape=}")
 seq_len = tokens.shape[-1]
 position_axis = [f"'{s[1:]}'" if s.startswith('▁') else s for s in model.tokenizer.tokenize("USER: Tell me how to make a")]
 position_axis = [f"'<obj>' \n({target_pos})"]+[f"{repr(model.tokenizer.decode(tokens[0, seq_pos]))} \n ({i})" for seq_pos, i in zip(range(seq_len+target_pos+1, seq_len), range(target_pos+1, 0))]
