@@ -24,7 +24,7 @@ from matplotlib.pyplot import imshow
 import re
 import random
 from pprint import pprint
-from utils import export_to_txt, import_json, generate_tokens
+from utils import export_to_txt, import_json, generate_tokens, my_viz
 from IPython.display import display, HTML
 from typing import List, Optional
 
@@ -37,8 +37,8 @@ t.set_grad_enabled(False);
 MAIN = __name__ == '__main__'
 # %%
 # Import model
-# model_name = "lmsys/vicuna-7b-v1.3"
-model_name = "meta-llama/Llama-2-7b-chat-hf"
+model_name = "lmsys/vicuna-7b-v1.3"
+# model_name = "meta-llama/Llama-2-7b-chat-hf"
 # tokenizer = LlamaTokenizer.from_pretrained(model_name)
 # model = LlamaForCausalLM.from_pretrained(model_name).to(device)
 model = LanguageModel(model_name, device_map="cuda:0", dispatch=True)
@@ -59,8 +59,8 @@ REMOTE = False
 
 #%%
 # Prepare prompts
-dataset = import_json("data/dataset_llama.json") #llama
-# dataset = import_json("data/dataset_vicuna.json") #vicuna
+# dataset = import_json("data/dataset_llama.json") #llama
+dataset = import_json("data/dataset_vicuna.json") #vicuna
 print(repr(dataset['harmless'][0]))
 sure_id = tokenizer.encode("Sure")[-1]
 sorry_id = tokenizer.encode("Sorry")[-1]
@@ -69,13 +69,14 @@ random.seed(seed)
 
 #%%
 # Generate 
-input = "[INST] Tell me how to make a paper plane. [/INST] "
+input = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: Tell me how to make a pie. ASSISTANT: "
 tokens = generate_tokens(model=model, 
                 prompts = input, 
                 n_tokens=10)
 response = tokenizer.batch_decode(tokens)
 for x in response:
     print(x, "\n ++++++++++ \n")
+
 #%%
 # Patching Residual Stream
 
@@ -136,26 +137,6 @@ def patch_residual(model: LanguageModel,
     print("Score:", refusal_score_diff)
     print(f"{refusal_score_diff.shape=}")
     return refusal_score_diff
-
-
-#%%
-# Experiment: residual stream patching
-# target_pos = -7 #vicuna
-target_pos = -7 #llama, up to <obj>
-receiver_prompts = dataset['harmless']
-source_prompts = dataset['harmful']
-patch_resid = t.empty((n_layers, abs(target_pos)))
-for layer in range(0, n_layers,2):
-    for pos in range(target_pos, 0):
-        patch_resid[layer:layer+2, pos+abs(target_pos)] = patch_residual(model=model, 
-                                                        receiver_prompts=receiver_prompts, 
-                                                        source_prompts=source_prompts, 
-                                                        answer_token_ids=[sorry_id, sure_id], 
-                                                        target_layers = [layer, layer+1],
-                                                        target_pos = pos)
-
-t.save(patch_resid, "results/patch_resid_LTF_llama2.pt")
-# refusal_score_diff_suffix_harmful = t.load("/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_suffix_harmful.pt")
 
 #%%
 def patch_residual_at_target_pos(model: LanguageModel, 
@@ -266,7 +247,27 @@ def get_target_pos_batch(model: LanguageModel,
     assert all(len(pos) == len(receiver_target_pos[0]) for pos in receiver_target_pos[1:]), "You don't have the same number of prompts for each target position"
     print(f"{receiver_target_pos=}")
     return source_target_pos, receiver_target_pos
-# Experiment: Patching "USER: Tell me how to make a"
+
+#%%
+# Experiment 1a: Residual stream patching
+target_pos = -8 #vicuna
+# target_pos = -7 #llama, up to <obj>
+receiver_prompts = dataset['harmless']
+source_prompts = dataset['harmful']
+patch_resid = t.empty((n_layers, abs(target_pos)))
+for layer in range(0, n_layers,2):
+    for pos in range(target_pos, 0):
+        patch_resid[layer:layer+2, pos+abs(target_pos)] = patch_residual(model=model, 
+                                                        receiver_prompts=receiver_prompts, 
+                                                        source_prompts=source_prompts, 
+                                                        answer_token_ids=[sorry_id, sure_id], 
+                                                        target_layers = [layer, layer+1],
+                                                        target_pos = pos)
+
+# t.save(patch_resid, "results/patch_resid_LTF_llama2.pt")
+# refusal_score_diff_suffix_harmful = t.load("/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_suffix_harmful.pt")
+#%%
+# Experiment 1b: Patching "USER: Tell me how to make a"
 source_target_pos, receiver_target_pos = get_target_pos_batch(model, 
                                                         target_ids=[3148,1207], 
                                                         receiver_prompts=receiver_prompts, 
@@ -284,16 +285,15 @@ for layer in range(0, n_layers,2):
                                                         source_target_pos = source_pos,
                                                         receiver_target_pos = receiver_pos,
                                                         target_pos = i)
-t.save(patch_resid_USER, "data/patch_resid_harmless_harmful_USER.pt")
-
+# t.save(patch_resid_USER, "data/patch_resid_harmless_harmful_USER.pt")
 
 #%%
 # Plot
 receiver:str = "harmless"
 source:str = "harmful"
 # target_pos = 9 #USER, vicuna
-# target_pos = -7 #<obj>, vicuna
-target_pos = -7 #<obj>, llama
+target_pos = -8 #<obj>, vicuna
+# target_pos = -7 #<obj>, llama
 
 score = patch_resid
 tokens = model.tokenizer(dataset['harmful'] + dataset['suffix'], return_tensors='pt', padding=True)['input_ids'].to(device)
@@ -303,22 +303,15 @@ position_axis = [f"'{s[1:]}'" if s.startswith('▁') else s for s in model.token
 position_axis = [f"'<obj>' \n({target_pos})"]+[f"{repr(model.tokenizer.decode(tokens[0, seq_pos]))} \n ({i})" for seq_pos, i in zip(range(seq_len+target_pos+1, seq_len), range(target_pos+1, 0))]
 # position_axis = ["'suf' \u2192 '.'\n(-6)"]+[f"{repr(model.tokenizer.decode(tokens[0, seq_pos]))} \n ({i})" for seq_pos, i in zip(range(seq_len+target_pos+1, seq_len), range(target_pos+1, 0))]
 
-#from plotly_utils import imshow
 fig, ax = plt.subplots(figsize=(abs(target_pos), 7))
 plt.imshow(
     score.cpu().numpy(),
     cmap='RdBu',
     vmin=-1,
     vmax=1,
-    # interpolation='none',
-    # title = "Refusal score diff from harmful prompts, patching harmful -> harmless",
-    # labels = {"x": "Positions", "y": "Layers"},
     aspect='auto',
-    # x=position_axis,
-    # width = 700,
-    # height = 1000
     )
-plt.title(f"Llama2: Activation patching of residual stream, {source} \u2192 {receiver}")
+plt.title(f"Vicuna: Activation patching of residual stream, {source} \u2192 {receiver}")
 plt.xlabel("Positions")
 plt.ylabel("Layers")
 plt.xticks(range(len(position_axis)), position_axis)
@@ -326,7 +319,6 @@ plt.tight_layout()
 plt.colorbar()
 fig.patch.set_facecolor('white')
 plt.subplots_adjust(bottom=0.2, top=0.9, left=0.1, right=0.85)
-#plt.savefig('/home/ubuntu/ARENA_3.0/representation-engineering/examples/harmless_harmful/figs/residual_patching_harmfulsuf_harmful_normalized', bbox_inches='tight')
 plt.show()
 
 # %%
@@ -406,6 +398,7 @@ def patch_attention_head(model: LanguageModel,
     return refusal_score_diff_from_harmless
 
 #%%
+# Experiment 2: Patching single attention heads
 # target_pos = -6 # "." position, vicuna
 # target_pos = -7 # "obj" position, vicuna
 # target_pos = -1 # ":" position, vicuna
@@ -443,7 +436,6 @@ plt.imshow(
     cmap='RdBu',
     vmin=-0.005,
     vmax=0.005,
-    #interpolation='nearest',
     extent=(0,x_max,y_max,0),
     aspect='auto'
     )
@@ -515,6 +507,7 @@ def patch_attn_out_cumulative(model: LanguageModel,
     return refusal_score_diff_from_harmless
 
 #%%
+# Experiment 3: Patching cumulative attn_output
 target_pos = -6
 patch_attn_cumulative = t.empty((n_layers, abs(target_pos)))
 for pos in range(target_pos, 0):
@@ -526,24 +519,7 @@ for pos in range(target_pos, 0):
                                                         target_pos=pos,
                                                         suffix_pos=None,
                                                         target_layers = [layer, layer+1])
-t.save(patch_attn_cumulative, "/root/andy-a6000-backup/users/chloe/jailbreak/results/attn_cumulative_llama.pt")
-# %%
-# suffix_pos = list(range(-8,-5)) + [-1]
-# target_pos = [-6]*(len(suffix_pos)-1) + [-1]
-# assert len(target_pos) == len(suffix_pos), f"{len(target_pos)=} != {len(suffix_pos)=}"
-# cumulative_attn_patching_suffix_3 = t.empty((n_layers, len(target_pos)))
-# # for i, pos in enumerate(target_pos):
-# for i, (pos, suf_pos) in enumerate(zip(target_pos, suffix_pos)):
-#     for layer in range(0, n_layers, 2):
-#         cumulative_attn_patching_suffix_3[layer:layer+2, i] = patch_attn_out_cumulative(model=model, 
-#                                                         receiver_prompts=dataset['harmful'], 
-#                                                         source_prompts=dataset['suffix'], 
-#                                                         answer_token_ids=[sorry_id, sure_id], 
-#                                                         target_pos= pos, #-6,
-#                                                         suffix_pos = suf_pos, #None,
-#                                                         target_layers = [layer, layer+1])
-
-
+# t.save(patch_attn_cumulative, "results/attn_cumulative_llama.pt")
 
 # %%
 # Plot
@@ -575,7 +551,6 @@ plt.tight_layout()
 plt.colorbar()
 fig.patch.set_facecolor('white')
 plt.subplots_adjust(bottom=0.2, top=0.9, left=0.1, right=0.85)
-#plt.savefig('/home/ubuntu/ARENA_3.0/representation-engineering/examples/harmless_harmful/figs/residual_patching_harmfulsuf_harmful_normalized', bbox_inches='tight')
 plt.show()
 
 # %%
@@ -619,7 +594,6 @@ generated_tokens = generate_tokens(model=model, prompts=tokens, n_tokens=50)
 # generated_tokens = [token.value for token in generated_tokens]
 for x in tokenizer.batch_decode(generated_tokens):
     print(repr(x), "\n +++++++++ \n")
-
 
 
 #%%
@@ -802,104 +776,7 @@ print(f"Refusal_score:{refusal_score}, \nResponse:{response}")
 #         print(f"{repr(model.tokenizer.decode(source_tokens[0, token]))} ({token})")
 #     print(f"{source_target_pos=}")
 #%%
-    # Setence plots
-def my_viz(
-    textArray: str,
-    textValues: List[float],
-    textHover: List[str],
-    line_length: int,
-    filename: Optional[str] = None,
-):
-    js_string = """function createHTML(textArray, textValues, textHover) {
-    const container = document.createElement('div');
-    container.style.position = 'relative';
-    container.style.lineHeight = '30px';
-    container.style.wordWrap = 'break-word';
-
-    textArray.forEach((word, index) => {
-        const span = document.createElement('span');
-        span.textContent = word;
-        span.style.padding = '5px';
-        span.style.backgroundColor = interpolateColor(textValues[index]);
-        span.style.cursor = 'pointer';
-        span.style.position = 'relative';
-        span.style.color = (textValues[index] >= 0.25 && textValues[index] <= 0.75) ? "black" : "white";
-
-        const hoverDiv = document.createElement('div');
-        hoverDiv.textContent = textHover[index];
-        hoverDiv.style.width = '250px';
-        hoverDiv.style.height = '100px';
-        hoverDiv.style.position = 'absolute';
-        hoverDiv.style.display = 'none';
-        hoverDiv.style.justifyContent = 'center';
-        hoverDiv.style.alignItems = 'center';
-        hoverDiv.style.background = '#fff';
-        hoverDiv.style.border = '1px solid black';
-        hoverDiv.style.textAlign = 'center';
-        hoverDiv.style.padding = '10px';
-        hoverDiv.style.boxSizing = 'border-box';
-        hoverDiv.style.top = '100%';
-        hoverDiv.style.left = '50%';
-        hoverDiv.style.color = 'black';
-        hoverDiv.style.zIndex = '999';
-        
-        span.onmouseover = () => {
-            hoverDiv.style.display = 'flex';
-            const rect = span.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            if (rect.left - containerRect.left < 125) {
-                hoverDiv.style.left = '0%';
-                hoverDiv.style.transform = 'translateX(0%)';
-            } else if (containerRect.right - rect.right < 125) {
-                hoverDiv.style.left = '100%';
-                hoverDiv.style.transform = 'translateX(-100%)';
-            } else {
-                hoverDiv.style.left = '50%';
-                hoverDiv.style.transform = 'translateX(-50%)';
-            }
-        };
-
-
-        span.onmouseout = () => { hoverDiv.style.display = 'none'; };
-
-        span.appendChild(hoverDiv);
-        container.appendChild(span);
-    });
-
-    return container;
-}
-
-function interpolateColor(value) {
-    if (value < 0.5) {
-        blue = 255;
-        green = Math.round(255 * (2 * value));
-        red = Math.round(255 * (2 * value));
-    } else {
-        blue = Math.round(255 * (2.0 - (2 * value)));
-        green = Math.round(255 * (2.0 - (2 * value)));
-        red = 255;
-    }
-    return `rgb(${red}, ${green}, ${blue})`;
-}
-
-// Usage: append the returned HTML object to your desired element
-// document.body.appendChild(createHTML(["word1", "word2"], [0.1, 0.9], ["hover1", "hover2"]));
-"""
-
-    html_string = "<br>" * 5 + f"""<div id="my-viz"></div>
-<script>
-{js_string}
-document.querySelector("#my-viz").appendChild(createHTML({textArray}, {textValues}, {textHover}));
-</script>
-""" + "<br>" * 10
-
-    if filename is None:
-        display(HTML(html_string))
-    else:
-        with open(filename, "w") as f:
-            f.write(html_string)
-        print(f"Saved at {filename!r}")
-
+# Setence plots
 my_viz(
     textArray=response,
     textValues=refusal_score,
@@ -907,7 +784,3 @@ my_viz(
     line_length=len(response)  # Adjust line length as needed
     #filename="/root/andy-a6000-backup/users/chloe/representation-engineering/examples/harmless_harmful/data/patch_resid_ltf_l16p1_sf3.html",  # Uncomment and specify a filename if you want to save the visualization to an HTML file
 )
-
-
-
-# %%

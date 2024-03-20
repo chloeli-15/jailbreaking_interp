@@ -30,8 +30,105 @@ def generate_tokens(model: LanguageModel,
         for i in range(n_tokens):
             tracer.next()
 
-    generated_tokens = model.generator.output
+        generated_tokens = model.generator.output.save()
     return generated_tokens # Tensor of shape (batch_size, seq_len) containing token ids
+
+def my_viz(
+    textArray: str,
+    textValues: List[float],
+    textHover: List[str],
+    line_length: int,
+    filename: Optional[str] = None,
+):
+    js_string = """function createHTML(textArray, textValues, textHover) {
+    const container = document.createElement('div');
+    container.style.position = 'relative';
+    container.style.lineHeight = '30px';
+    container.style.wordWrap = 'break-word';
+
+    textArray.forEach((word, index) => {
+        const span = document.createElement('span');
+        span.textContent = word;
+        span.style.padding = '5px';
+        span.style.backgroundColor = interpolateColor(textValues[index]);
+        span.style.cursor = 'pointer';
+        span.style.position = 'relative';
+        span.style.color = (textValues[index] >= 0.25 && textValues[index] <= 0.75) ? "black" : "white";
+
+        const hoverDiv = document.createElement('div');
+        hoverDiv.textContent = textHover[index];
+        hoverDiv.style.width = '250px';
+        hoverDiv.style.height = '100px';
+        hoverDiv.style.position = 'absolute';
+        hoverDiv.style.display = 'none';
+        hoverDiv.style.justifyContent = 'center';
+        hoverDiv.style.alignItems = 'center';
+        hoverDiv.style.background = '#fff';
+        hoverDiv.style.border = '1px solid black';
+        hoverDiv.style.textAlign = 'center';
+        hoverDiv.style.padding = '10px';
+        hoverDiv.style.boxSizing = 'border-box';
+        hoverDiv.style.top = '100%';
+        hoverDiv.style.left = '50%';
+        hoverDiv.style.color = 'black';
+        hoverDiv.style.zIndex = '999';
+        
+        span.onmouseover = () => {
+            hoverDiv.style.display = 'flex';
+            const rect = span.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            if (rect.left - containerRect.left < 125) {
+                hoverDiv.style.left = '0%';
+                hoverDiv.style.transform = 'translateX(0%)';
+            } else if (containerRect.right - rect.right < 125) {
+                hoverDiv.style.left = '100%';
+                hoverDiv.style.transform = 'translateX(-100%)';
+            } else {
+                hoverDiv.style.left = '50%';
+                hoverDiv.style.transform = 'translateX(-50%)';
+            }
+        };
+
+
+        span.onmouseout = () => { hoverDiv.style.display = 'none'; };
+
+        span.appendChild(hoverDiv);
+        container.appendChild(span);
+    });
+
+    return container;
+}
+
+function interpolateColor(value) {
+    if (value < 0.5) {
+        blue = 255;
+        green = Math.round(255 * (2 * value));
+        red = Math.round(255 * (2 * value));
+    } else {
+        blue = Math.round(255 * (2.0 - (2 * value)));
+        green = Math.round(255 * (2.0 - (2 * value)));
+        red = 255;
+    }
+    return `rgb(${red}, ${green}, ${blue})`;
+}
+
+// Usage: append the returned HTML object to your desired element
+// document.body.appendChild(createHTML(["word1", "word2"], [0.1, 0.9], ["hover1", "hover2"]));
+"""
+
+    html_string = "<br>" * 5 + f"""<div id="my-viz"></div>
+<script>
+{js_string}
+document.querySelector("#my-viz").appendChild(createHTML({textArray}, {textValues}, {textHover}));
+</script>
+""" + "<br>" * 10
+
+    if filename is None:
+        display(HTML(html_string))
+    else:
+        with open(filename, "w") as f:
+            f.write(html_string)
+        print(f"Saved at {filename!r}")
 
 
 # For GPT2-Small
