@@ -129,7 +129,7 @@ However, note the following variations:
 TODO!
 -->
 
-### Jailbreaking
+#### Jailbreaking
 
 **Mistral:** I found that activations from `layer 13 and onwards, pos -1` extracted from harmless prompts reliably jailbreak the model into answering a harmful request. This **generalizes** to harmful prompts with different formats and topics. Here are some examples:
 <!--
@@ -160,15 +160,6 @@ ADD MORE EXAMPLES
 -->
 ---
 
-**My working hypotheses:**
-- At earlier layers 1-6, the model computes a representation of the task.
-- At layers 7-12, the model computes the **harmlessness feature**, which assesses whether the input is dangerous, illegal, unethical, etc. Part of this information is stored at some end-of-instruction position. (In Vicuna, this is the "." position; In Llama, this is the "[" of the assistant tag.) However, 
-- From layers 12 to 13, the information about harmlessness is retrieved and transferred to the -1 position by the circuit responsible for refusal. 
-- At layers 13-21, the model computes the **refusal feature**, which produces the output "I'm sorry, I cannot answer ...", based on the information about harmlessness and likely many other information. 
-
-<!--
-CAN I REPLICATE THIS IN LLAMA?
--->
 
 ### Patching individual attention heads
 
@@ -181,4 +172,14 @@ Directions
 - difference between jailbreaking and wrongful refusal
 - [above] mechanism of how each works
 - -6 and -1 difference: does it persist across models?
+-->
+
+---
+**My working hypotheses:**
+- At earlier layers 1-6, the model computes a representation of the task.
+- At layers 7-12, the model computes the **harmlessness feature**, which assesses whether the input is dangerous, illegal, unethical, etc. Part of this information is stored at some end-of-instruction position. (In Vicuna, this is the "." position; In Llama, this is the "[" of the assistant tag.) However, 
+- From layers 12 to 13, the information about harmlessness is retrieved and transferred to the -1 position by the circuit responsible for refusal. 
+- At layers 13-21, the model computes the **refusal feature**, which produces the output "I'm sorry, I cannot answer ...", based on the information about harmlessness and likely many other information. 
+<!--
+CAN I REPLICATE THIS IN LLAMA?
 -->
