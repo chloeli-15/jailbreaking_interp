@@ -57,7 +57,7 @@ We can see that the following attention output are **sufficient** to restore ref
 -->
 **Patching harmless &rarr; harmful**
 <p align="center">
-  <img width="513" alt="logit_attribution_harmless_harmful" src=>
+  <img width="850" alt="logit_attribution_harmless_harmful" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/f8449667-a02f-4fe1-813d-2bcc360ec6de">
 </p>
 
 
