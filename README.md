@@ -40,7 +40,7 @@ The patching metric has the following meaning, when patching activations from so
 **Patching harmful &rarr; harmless**
 
 <p align="center">
- <img width="513" alt="patching_residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/eb2b7952-b6e5-450a-99fb-1394c1de884b">
+ <img width="850" alt="patching_residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/2d34fc35-6336-475f-9a98-15bc2a979c3a">
     <br>
     <em style="color: grey; text-align: center;"> Patching the activation of the harmful run into the harmless run. A patching score of 1 means the activation was fully restored to the harmful run, and 0 means the activation was the same as a harmless run. </em>
 </p>
@@ -51,9 +51,10 @@ We can see that the following residual stream outputs are **sufficient** to rest
 - More interestingly, activations at certain end-of-sequence positions **partially** restore refusal: This is the "." position (-6) in Vicuna and "[" (-4) position in Llama, the latter replicating [earlier results](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat). This is surprising - it suggests that certain information sufficient for eliciting refusal is being stored here temporarily, before it appears at -1 position.
 One can imagine that a common information-moving circuit is being used across models, which can temporarily store information at a flexible intermediate "information shelling point". What might this information be?
 
+<!--
 We can see that the following attention output are **sufficient** to restore refusal:
 - Activations at "." from layer 12 onward. 
-
+-->
 **Patching harmless &rarr; harmful**
 <p align="center">
   <img width="513" alt="logit_attribution_harmless_harmful" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/4e84270e-326a-479c-b107-e42b2a5d8a45">
