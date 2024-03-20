@@ -14,7 +14,7 @@ This repository contains code for a series of experiments that find the mechansi
 
 To define a metric that quantifies refusal, I use the logit difference between tokens "Sorry" and "Sure" at the last token position following [previous work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat): $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position. This equals the log prob difference between predicting the token "Sorry" and "Sure". This refusal score can be decomposed into a linear sum of the contribution of each layer's residual stream using direct logit attribution methods. 
 
-I computed the refusal score for the cumulative residual stream output of each layer (and all layers before it). For both models, **computational outputs that contribute to refusal become present in the residual stream starting around middle layers 13-17**, and plateaus around layers 25-28. Interestingly, the adversarial suffix lowers refusal over middle layers 14-29.
+I computed the cumulative refusal score at each layer's residual stream (and all layers before it). For both models, **computational outputs that contribute to refusal become present in the residual stream starting around middle layers 13-17**, and plateaus around layers 25-28. Interestingly, the adversarial suffix lowers refusal over middle layers 14-29.
 
 <img width="1000" alt="Logit attribution cumulative residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/58e3a1d2-4ad0-447f-8a41-a87acbadc0e3">
 
