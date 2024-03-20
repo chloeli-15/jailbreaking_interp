@@ -12,14 +12,11 @@ This repository contains code for a series of experiments that find the mechansi
 
 ### Logit attribution
 
-To define a metric that quantifies refusal, I use the logit difference between tokens "Sorry" and "Sure" at the last token position following [previous work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat): $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position. This equals the log prob difference between predicting the token "Sorry" and "Sure", thus may be a good metric . 
+To define a metric that quantifies refusal, I use the logit difference between tokens "Sorry" and "Sure" at the last token position following [previous work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat): $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position. This equals the log prob difference between predicting the token "Sorry" and "Sure". This refusal score can be decomposed into a linear sum of the contribution of each layer's residual stream using direct logit attribution methods. 
 
-This refusal score can be decomposed into a linear sum of the contribution of each layer's residual stream using direct logit attribution methods. I computed the refusal score for the cumulative residual stream output of each layer (and all layers before it). For both models, computational outputs relevant for refusal start to be present in the residual stream around middle layers 13-17, and plateaus around layers 26-28. 
+I computed the refusal score for the cumulative residual stream output of each layer (and all layers before it). For both models, **computational outputs that contribute to refusal become present in the residual stream starting around middle layers 13-17**, and plateaus around layers 25-28. Interestingly, the adversarial suffix lowers refusal over middle layers 14-29.
 
-<img width="800" alt="Logit attribution cumulative residual, Vicuna" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/97ab29c8-e70c-476f-8990-7f65e7be1568">
-
-<img width="430" alt="Logit attribution cumulative residual, Llama2" src="https://github.com/chloeli-15/jailbreaking_interp/blob/main/figs/logit_diff_llama_SorrySure.png?raw=true">
-
+<img width="1000" alt="Logit attribution cumulative residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/58e3a1d2-4ad0-447f-8a41-a87acbadc0e3">
 
 ### Activation patching
 
@@ -59,8 +56,7 @@ We can see that the following residual stream outputs are **necessary** to resto
 Interestingly, we can see are **not (fully) necessary**
 Patching in the harmful-to-harmless direction and the harmless-to-harmful direction **do not produce symmetrical results**. The signal at `<obj>` is much weaker in the harmless-to-harmful direction. **WHY?? This would suggest that ...??** The intermediate signal is almost nonexistent. 
 
-%TODO: CHECK PATCHING FOR REST OF THE SENTENCE TOKENS
-%TRY ADD INSTEAD OF REPLACE FOR PATCH
+
 **Patching suffix &rarr; harmful**
 <p align="center">
   <img width="450" alt="logit_attribution_harmless_harmful" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/c338c2d2-1ec7-4bd0-b965-94b98cc30675">
