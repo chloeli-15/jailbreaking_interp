@@ -4,6 +4,10 @@
 
 The focus of this study is to investigate the mechanisms for LLMs refusing harmful prompts and jailbreaking by adversarial suffixes obtained via gradient-based approaches from [Zou et al (2023)](https://doi.org/10.48550/arXiv.2307.15043). This builds on [recent work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat) by Andy Arditi and Oscar Obeso on refusal in Llama2-7b-rlhf. 
 
+Some relevant questions considered:
+- Can we arrive at generalizable statements about how refusal mechanisms work across models?
+- Can we find ways of manipulating model internals that reliably cause models to refuse (harmless) prompts and jailbreak models on harmful prompts? Can we achieve even more fine-grained control (e.g. jailbreak that get more specific harmful responses)?
+
 This repository contains code for a series of experiments that find the mechansisms refusal and jailbreaking: `logit_attribution.py` defines a logit difference metric for refusal and finds layers whose residual output directly affects refusal; `activation_patching.py` finds a sparse graph of circuit for refusal using activation patching; `attention_pattern_analysis.py` visualizes attention patterns to interpret heads contributing to refusal. The models involved in these experiments are:
 - Llama2-7B-chat
 - Vicuna-7B-v1.3
@@ -18,7 +22,7 @@ cd jailbreaking_interp
 pip install -r requirements.txt
 ```
 
-**Note (13/04/2024): NNsight has released a new version of its library and code in the main experiment files is currently being updated to reflect this change.**
+**Note (13/04/2024): NNsight has released a new version of its library and the code in the main experiment files is currently being updated to reflect this change.**
 
 ## Initial results 
 
@@ -50,7 +54,7 @@ The patching metric has the following meaning, when patching activations from so
 We can see that the following residual stream outputs are **sufficient** to restore refusal:
 - Activations at `<obj>` position in early layers ~3-11 - The effect of this patch can be thought of as replacing the harmless object (`"cake"`) with a harmful object (`"bomb"`).
 - Activations at the -1 position in later layers ~13-31
-- More interestingly, activations at certain end-of-sequence positions **partially** restore refusal: This is the "." position (-6) in Vicuna and "[" (-4) position in Llama, the latter replicating [earlier results](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat). This is surprising - it suggests that certain information sufficient for eliciting refusal is being stored here temporarily, before it appears at -1 position.
+- More interestingly, activations at certain end-of-sequence positions **partially** restore refusal: This is the "." position (-7) in Vicuna and "[" (-4) position in Llama, the latter replicating [earlier results](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat). This is surprising - it suggests that certain information sufficient for eliciting refusal is being stored here temporarily, before it appears at -1 position.
 One can imagine that a common information-moving circuit is being used across models, which can temporarily store information at a flexible intermediate "information shelling point". What might this information be?
 
 <!--
