@@ -18,6 +18,8 @@ cd jailbreaking_interp
 pip install -r requirements.txt
 ```
 
+**Note (13/04/2024): NNsight has released a new version of its library and code in the main experiment files is currently being updated to reflect this change.**
+
 ## Initial results 
 
 ### Logit attribution
