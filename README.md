@@ -6,7 +6,7 @@ The focus of this study is to investigate the mechanisms for LLMs refusing harmf
 
 Some relevant questions considered:
 - Can we arrive at generalizable statements about how refusal mechanisms work across models?
-- Can we find ways of manipulating model internals that reliably cause models to refuse (harmless) prompts and jailbreak models on harmful prompts? Can we achieve even more fine-grained control (e.g. jailbreak that get more specific harmful responses)?
+- Can we find ways of manipulating model internals that reliably cause models to refuse (harmless) prompts and jailbreak models on harmful prompts? Can we achieve even more fine-grained control (e.g. jailbreaks that get more specific harmful responses)?
 
 This repository contains code for a series of experiments that find the mechansisms refusal and jailbreaking: `logit_attribution.py` defines a logit difference metric for refusal and finds layers whose residual output directly affects refusal; `activation_patching.py` finds a sparse graph of circuit for refusal using activation patching; `attention_pattern_analysis.py` visualizes attention patterns to interpret heads contributing to refusal. The models involved in these experiments are:
 - Llama2-7B-chat
