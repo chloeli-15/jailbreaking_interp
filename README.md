@@ -30,7 +30,9 @@ pip install -r requirements.txt
 
 To define a metric that quantifies refusal, I use the logit difference between tokens "Sorry" and "Sure" at the last token position following [previous work](https://www.alignmentforum.org/posts/pYcEhoAoPfHhgJ8YC/refusal-mechanisms-initial-experiments-with-llama-2-7b-chat): $$refusal := logit[Sorry] - logit[Sure]$$ at the -1 token position. This equals the log prob difference between predicting the token "Sorry" and "Sure". This refusal score can be decomposed into a linear sum of the contribution of each layer's residual stream using direct logit attribution methods. 
 
-I computed the cumulative refusal score at each layer's residual stream (and all layers before it). For both models, **computational outputs that contribute to refusal become present in the residual stream starting around middle layers 13-17**, and plateaus around layers 25-28. Interestingly, the adversarial suffix lowers refusal over middle layers 14-29.
+I computed the cumulative refusal score at each layer's residual stream (and all layers before it). For both models, **computational outputs that contribute to refusal become present in the residual stream starting around middle layers 13-17**, and plateaus around layers 25-28. Interestingly, the adversarial suffix from [Zou et al (2023)](https://doi.org/10.48550/arXiv.2307.15043) lowers refusal over middle layers 14-29, however, this pattern shows variation depending on the logits used to calculate the refusal score. 
+
+Further, note that the reliability of the refusal score (in terms of separation of logit attribution between harmless vs harmful prompts) changes across models, likely based on how they're fine-tuned to start their responses to harmful prompts. (For Vicuna, "Sure" and "I'm" show greater separation since it tends to start refusal with "I'm sorry...", but this)
 
 <img width="1000" alt="Logit attribution cumulative residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/58e3a1d2-4ad0-447f-8a41-a87acbadc0e3">
 
@@ -66,10 +68,8 @@ We can see that the following attention output are **sufficient** to restore ref
   <img width="850" alt="logit_attribution_harmless_harmful" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/f8449667-a02f-4fe1-813d-2bcc360ec6de">
 </p>
 
-
-<!--
-Patching in the harmful-to-harmless direction and the harmless-to-harmful direction **do not produce symmetrical results**. The signal at `<obj>` is much weaker in the harmless-to-harmful direction. **WHY?? This would suggest that ...??** The intermediate signal is almost nonexistent. 
--->
+We can see that patching in the harmful-to-harmless direction and the harmless-to-harmful direction do not produce symmetrical results. This suggests that residual stream outputs that are **necessary** for refusal (harmless-to-harmful) is a subset of what is sufficient: 
+- Activations at -1 pos, layer ~15 onwards are most necessary for refusal
 
 <!--
 **Patching suffix &rarr; harmful**
