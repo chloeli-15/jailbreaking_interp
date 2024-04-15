@@ -85,7 +85,7 @@ TODO: CHECK PATCHING FOR REST OF THE SENTENCE TOKENS
 
 ### Generate with patching
 
-To better interpret the activations at `pos=-6` and `pos=-1`, I patched in these activations then let the model generate a response. 
+To better interpret the activations at `pos=-7` (Vicuna) and `pos=-1`, I patched in these activations then let the model generate a response. 
 
 Beginning with harmless and harmful prompts, the patching direction elicited different model behaviors:
 1. **Harmful &rarr; Harmless:** This produced **wrongful refusal,** where the model unnecessarily refuses a harmless request that it should otherwise answer.
