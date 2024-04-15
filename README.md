@@ -45,7 +45,7 @@ The patching metric has the following meaning, when patching activations from so
 - 0 = refusal behavior after patching is the same as the receiver before patching (patching had no effect)
 
 
-**Patching harmful &rarr; harmless**
+**Patching harmful &rarr; harmless in the residual stream** 
 
 <p align="center">
  <img width="850" alt="patching_residual" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/2d34fc35-6336-475f-9a98-15bc2a979c3a">
@@ -63,7 +63,7 @@ One can imagine that a common information-moving circuit is being used across mo
 We can see that the following attention output are **sufficient** to restore refusal:
 - Activations at "." from layer 12 onward. 
 -->
-**Patching harmless &rarr; harmful**
+**Patching harmless &rarr; harmful in the residual stream**
 <p align="center">
   <img width="850" alt="logit_attribution_harmless_harmful" src="https://github.com/chloeli-15/jailbreaking_interp/assets/8319231/f8449667-a02f-4fe1-813d-2bcc360ec6de">
 </p>
@@ -82,6 +82,10 @@ We can see that patching in the harmful-to-harmless direction and the harmless-t
 There are two key observations. First, the only strong signal is at the -1 position, **WHY?...suggesting?** Second, the effects of patching suffix activation at -1 pos on refusal start in very early layers, already present in layer 2, then reach a maximum around layer 15. In contrast, patching harmless activations only has an effect from layer ~15 onwards. 
 TODO: CHECK PATCHING FOR REST OF THE SENTENCE TOKENS
 -->
+
+**Patching harmful &rarr; harmless for attention output**
+**Patching harmless &rarr; harmful for attention output**
+
 
 ### Generate with patching
 
