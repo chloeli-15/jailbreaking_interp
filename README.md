@@ -143,7 +143,7 @@ TODO!
 
 #### Jailbreaking
 
-**Mistral:** I found that activations from `layer 13 and onwards, pos -1` extracted from harmless prompts reliably jailbreak the model into answering a harmful request. This **generalizes** to harmful prompts with different formats and topics. Here are some examples:
+**Vicuna:** I found that activations from `layer 13 and onwards, pos -1` extracted from harmless prompts reliably jailbreak the model into answering a harmful request. This **generalizes** to harmful prompts with different formats and topics. Here are some examples:
 <!--
 - EVAL OF JAILBREAKING EFFICACY ON HARMBENCH
 -->
