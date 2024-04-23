@@ -133,8 +133,9 @@ However, note the following variations:
 4. The activations at pos -6 (layers 8-12) were less reliably successful at eliciting wrongful refusal. It failed to elicit refusal on "Give a summary of the effects of the industrial revolution", for example. In contrast, activations at pos -1 (layers 13 and onwards) reliably elicited refusal, typically with a smaller sf.
  
 
-#### Wrongful refusal: comparing suffix &rarr; harmful and harmless &rarr; harmful
 <!--
+#### Wrongful refusal: comparing suffix &rarr; harmful and harmless &rarr; harmful
+
 TODO!
 -->
 
